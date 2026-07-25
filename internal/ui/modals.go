@@ -274,6 +274,7 @@ func (m Modals) View(w, h int) string {
 		title = "Keyboard Shortcuts Reference"
 		body = `
   Alt+Space    🔭 Telescope Request Finder (List & Search Requests)
+  Alt+K        🎨 Cycle UI Color Theme (Dark, Light, Cyberpunk, Nord, HighContrast)
   Ctrl+N / T   New Request / New Tab
   Alt+Left / Right (or Alt+[ / ]) Switch Open Request Tabs
   Ctrl+S       Save Request (Prompts for Name)

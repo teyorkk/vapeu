@@ -252,6 +252,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
+		case "alt+k":
+			m.cycleTheme()
+			return m, nil
 		case "ctrl+q":
 			return m, tea.Quit
 		case "ctrl+x":
@@ -401,6 +404,26 @@ func (m *AppModel) saveCurrentRequest(name string) {
 		}
 		_ = m.storage.SaveCollection(*col)
 	}
+}
+
+func (m *AppModel) cycleTheme() {
+	curr := strings.ToLower(m.config.Theme)
+	idx := 0
+	for i, t := range theme.AvailableThemes {
+		if t == curr {
+			idx = (i + 1) % len(theme.AvailableThemes)
+			break
+		}
+	}
+	nextTheme := theme.AvailableThemes[idx]
+	m.config.Theme = nextTheme
+	_ = m.storage.SaveConfig(m.config)
+
+	th := theme.GetTheme(nextTheme)
+	m.styles = theme.MakeStyles(th)
+	m.editorPanel.styles = m.styles
+	m.responsePanel.styles = m.styles
+	m.modals.styles = m.styles
 }
 
 func (m *AppModel) switchTab(index int) {

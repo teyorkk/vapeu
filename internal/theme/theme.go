@@ -97,12 +97,61 @@ var (
 		Status5xx:       lipgloss.Color("#ff0000"),
 		ChromaStyleName: "monokai",
 	}
+	CyberpunkTheme = Theme{
+		Name:            "cyberpunk",
+		Background:      lipgloss.Color("#0f0e17"),
+		Foreground:      lipgloss.Color("#fffffe"),
+		PanelBorder:     lipgloss.Color("#ff8906"),
+		ActiveBorder:    lipgloss.Color("#ff007f"), // Neon Pink
+		HeaderBg:        lipgloss.Color("#2e2f3e"),
+		HeaderFg:        lipgloss.Color("#00f0ff"), // Neon Cyan
+		TabActive:       lipgloss.Color("#ff007f"),
+		TabInactive:     lipgloss.Color("#a7a9be"),
+		MethodGet:       lipgloss.Color("#00f0ff"),
+		MethodPost:      lipgloss.Color("#ff8906"),
+		MethodPut:       lipgloss.Color("#f25f4c"),
+		MethodPatch:     lipgloss.Color("#e53170"),
+		MethodDelete:    lipgloss.Color("#ff007f"),
+		Status2xx:       lipgloss.Color("#00f0ff"),
+		Status3xx:       lipgloss.Color("#ff8906"),
+		Status4xx:       lipgloss.Color("#f25f4c"),
+		Status5xx:       lipgloss.Color("#ff007f"),
+		ChromaStyleName: "monokai",
+	}
+
+	NordTheme = Theme{
+		Name:            "nord",
+		Background:      lipgloss.Color("#2e3440"),
+		Foreground:      lipgloss.Color("#eceff4"),
+		PanelBorder:     lipgloss.Color("#4c566a"),
+		ActiveBorder:    lipgloss.Color("#88c0d0"), // Frost Cyan
+		HeaderBg:        lipgloss.Color("#3b4252"),
+		HeaderFg:        lipgloss.Color("#e5e9f0"),
+		TabActive:       lipgloss.Color("#88c0d0"),
+		TabInactive:     lipgloss.Color("#d8dee9"),
+		MethodGet:       lipgloss.Color("#a3be8c"), // Green
+		MethodPost:      lipgloss.Color("#ebcb8b"), // Yellow
+		MethodPut:       lipgloss.Color("#81a1c1"), // Blue
+		MethodPatch:     lipgloss.Color("#8fbcbb"), // Teal
+		MethodDelete:    lipgloss.Color("#bf616a"), // Red
+		Status2xx:       lipgloss.Color("#a3be8c"),
+		Status3xx:       lipgloss.Color("#81a1c1"),
+		Status4xx:       lipgloss.Color("#ebcb8b"),
+		Status5xx:       lipgloss.Color("#bf616a"),
+		ChromaStyleName: "nord",
+	}
 )
+
+var AvailableThemes = []string{"dark", "light", "cyberpunk", "nord", "highcontrast"}
 
 func GetTheme(name string) Theme {
 	switch strings.ToLower(name) {
 	case "light":
 		return LightTheme
+	case "cyberpunk":
+		return CyberpunkTheme
+	case "nord":
+		return NordTheme
 	case "highcontrast", "high_contrast":
 		return HighContrastTheme
 	default:
