@@ -281,6 +281,16 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeFocus = FocusResponse
 			m.updateFocus()
 			return m, nil
+		case "alt+left", "alt+[":
+			if len(m.tabs) > 1 {
+				m.switchTab((m.activeTab - 1 + len(m.tabs)) % len(m.tabs))
+			}
+			return m, nil
+		case "alt+right", "alt+]":
+			if len(m.tabs) > 1 {
+				m.switchTab((m.activeTab + 1) % len(m.tabs))
+			}
+			return m, nil
 		case "ctrl+n", "ctrl+t":
 			newReq := demoRequest()
 			m.tabs = append(m.tabs, tabItem{Title: "New Request", Request: newReq})
@@ -393,6 +403,13 @@ func (m *AppModel) saveCurrentRequest(name string) {
 	}
 }
 
+func (m *AppModel) switchTab(index int) {
+	if index >= 0 && index < len(m.tabs) {
+		m.activeTab = index
+		m.editorPanel.LoadRequest(m.tabs[index].Request)
+	}
+}
+
 func (m *AppModel) loadRequest(req *models.Request) {
 	m.editorPanel.LoadRequest(req)
 	m.tabs[m.activeTab].Request = req
@@ -406,8 +423,8 @@ func (m *AppModel) recalculateLayout() {
 		return
 	}
 
-	// 1 line for top header bar
-	availHeight := m.height - 1
+	// 1 line header + 1 line safety buffer for bottom border line
+	availHeight := m.height - 2
 	if availHeight < 10 {
 		availHeight = 10
 	}

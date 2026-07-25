@@ -275,6 +275,7 @@ func (m Modals) View(w, h int) string {
 		body = `
   Alt+Space    🔭 Telescope Request Finder (List & Search Requests)
   Ctrl+N / T   New Request / New Tab
+  Alt+Left / Right (or Alt+[ / ]) Switch Open Request Tabs
   Ctrl+S       Save Request (Prompts for Name)
   Ctrl+R       Send Request
   Ctrl+X       Stop / Cancel Running Request
