@@ -1,0 +1,36 @@
+# Binaries and build artifacts
+apicli
+apicli.exe
+bin/
+build/
+dist/
+*.exe
+*.exe.manifest
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.test
+*.out
+coverage.out
+c.out
+profile.out
+
+# Go cache and vendor
+vendor/
+
+# Environment and local configs
+.env
+*.local
+tmp/
+scratch/
+
+# IDE and OS files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
