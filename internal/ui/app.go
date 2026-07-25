@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"vapeu/internal/api"
 	"vapeu/internal/models"
@@ -27,6 +28,8 @@ type tabItem struct {
 	Request *models.Request
 }
 
+type splashTimeoutMsg struct{}
+
 type AppModel struct {
 	storage      *storage.Storage
 	config       models.Config
@@ -37,6 +40,7 @@ type AppModel struct {
 	history      []models.HistoryItem
 	activeEnv    *models.Environment
 
+	showSplash  bool
 	activeFocus PanelFocus
 	width       int
 	height      int
@@ -134,6 +138,7 @@ func NewAppModel(st *storage.Storage) AppModel {
 		collections:      cols,
 		environments:     envs,
 		history:          hist,
+		showSplash:       true,
 		activeFocus:      FocusEditor,
 		collectionsPanel: collPanel,
 		editorPanel:      editorPanel,
@@ -159,19 +164,26 @@ func demoRequest() *models.Request {
 }
 
 func (m AppModel) Init() tea.Cmd {
-	return nil
+	return tea.Tick(1200*time.Millisecond, func(t time.Time) tea.Msg {
+		return splashTimeoutMsg{}
+	})
 }
 
 func (m *AppModel) updateFocus() {
-	m.collectionsPanel.SetFocused(m.activeFocus == FocusCollections && m.modals.ActiveModal == ModalNone)
-	m.editorPanel.SetFocused(m.activeFocus == FocusEditor && m.modals.ActiveModal == ModalNone)
-	m.responsePanel.SetFocused(m.activeFocus == FocusResponse && m.modals.ActiveModal == ModalNone)
+	m.collectionsPanel.SetFocused(m.activeFocus == FocusCollections && m.modals.ActiveModal == ModalNone && !m.showSplash)
+	m.editorPanel.SetFocused(m.activeFocus == FocusEditor && m.modals.ActiveModal == ModalNone && !m.showSplash)
+	m.responsePanel.SetFocused(m.activeFocus == FocusResponse && m.modals.ActiveModal == ModalNone && !m.showSplash)
 }
 
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case splashTimeoutMsg:
+		m.showSplash = false
+		m.updateFocus()
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -182,7 +194,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.responsePanel.SetLoading(false)
 		if msg.resp != nil {
 			m.responsePanel.SetResponse(msg.resp)
-			// Add to history
 			histItem := models.HistoryItem{
 				ID:         uuid.New().String(),
 				Request:    *m.editorPanel.Request,
@@ -197,6 +208,12 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		if m.showSplash {
+			m.showSplash = false
+			m.updateFocus()
+			return m, nil
+		}
+
 		if m.modals.ActiveModal != ModalNone {
 			var cmd tea.Cmd
 			var reqToLoad *models.Request
@@ -338,7 +355,17 @@ func (m AppModel) View() string {
 		return "Initializing TUI..."
 	}
 
-	// Render Tabs bar
+	if m.showSplash {
+		return m.renderSplash()
+	}
+
+	// Render Header with VAPEU branding
+	brandBadge := lipgloss.NewStyle().
+		Background(lipgloss.Color("#cba6f7")).
+		Foreground(lipgloss.Color("#11111b")).
+		Bold(true).
+		Render(" VAPEU ")
+
 	var tabTitles []string
 	for i, t := range m.tabs {
 		title := t.Title
@@ -352,7 +379,7 @@ func (m AppModel) View() string {
 		}
 	}
 	tabBar := strings.Join(tabTitles, " ")
-	headerView := m.styles.HeaderFg.Render(" " + tabBar + " | Press '?' for Help ")
+	headerView := m.styles.HeaderFg.Render(brandBadge + " " + tabBar + " | Press '?' for Help ")
 
 	// Render 3 Panels
 	collView := m.collectionsPanel.View()
@@ -369,4 +396,31 @@ func (m AppModel) View() string {
 	}
 
 	return mainLayout
+}
+
+func (m AppModel) renderSplash() string {
+	banner := `
+  ____   ______   ____  _______  __  __
+ / __ \ / __  /  / __ \/ ____/ / / / /
+/ /_/ // /_/ /  / /_/ / __/   / / / / 
+\____//_/ /_/  / ____/ /___  / /_/ /  
+              /_/   /_____/  \____/   
+`
+
+	logoStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#cba6f7"))
+
+	subText := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#a6adc8")).
+		Render("v a p e u  --  Terminal API Client\n\nInitializing client interface...")
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#cba6f7")).
+		Padding(2, 4).
+		Align(lipgloss.Center)
+
+	content := lipgloss.JoinVertical(lipgloss.Center, logoStyle.Render(banner), "\n", subText)
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box.Render(content))
 }
