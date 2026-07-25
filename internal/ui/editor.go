@@ -382,7 +382,7 @@ func (p EditorPanel) View() string {
 		style = p.styles.ActivePanel
 	}
 
-	methodStr := p.styles.MethodStyle(methods[p.methodIndex]).Render(fmt.Sprintf(" [%s] ", methods[p.methodIndex]))
+	methodStr := p.styles.MethodStyle(methods[p.methodIndex]).Render(fmt.Sprintf(" [%s] (Alt+M) ", methods[p.methodIndex]))
 	urlView := p.urlInput.View()
 	sendBtn := lipgloss.NewStyle().Background(lipgloss.Color("#cba6f7")).Foreground(lipgloss.Color("#11111b")).Bold(true).Render(" Ctrl+R Send ")
 
