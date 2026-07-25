@@ -261,6 +261,10 @@ func (p EditorPanel) Update(msg tea.Msg) (EditorPanel, tea.Cmd) {
 			p.activeSubTab = SubTabCookies
 			p.focusActiveSubTab()
 			return p, nil
+		case "alt+u", "esc":
+			p.blurAll()
+			p.urlInput.Focus()
+			return p, nil
 		case "down":
 			if p.urlInput.Focused() {
 				p.focusActiveSubTab()
@@ -274,10 +278,6 @@ func (p EditorPanel) Update(msg tea.Msg) (EditorPanel, tea.Cmd) {
 			if p.activeSubTab == SubTabAuth && p.authInput2.Focused() {
 				p.authInput2.Blur()
 				p.authInput1.Focus()
-				return p, nil
-			} else if !p.urlInput.Focused() {
-				p.blurAll()
-				p.urlInput.Focus()
 				return p, nil
 			}
 		}
