@@ -135,6 +135,10 @@ func (p ResponsePanel) Update(msg tea.Msg) (ResponsePanel, tea.Cmd) {
 			p.activeSubTab = RespTabHeaders
 			p.updateViewportContent()
 			return p, nil
+		case "alt+c":
+			p.activeSubTab = RespTabCookies
+			p.updateViewportContent()
+			return p, nil
 		case "alt+p":
 			p.isPretty = !p.isPretty
 			p.updateViewportContent()
@@ -170,7 +174,7 @@ func (p ResponsePanel) View() string {
 		statusHeader = " Status: -- "
 	}
 
-	subTabs := []string{"Alt+B Body", "Alt+H Headers", "Cookies", "Alt+P Pretty"}
+	subTabs := []string{"Alt+B Body", "Alt+H Headers", "Alt+C Cookies", "Alt+P Pretty"}
 	var renderedTabs []string
 	for i, t := range subTabs {
 		if ResponseSubTab(i) == p.activeSubTab {
