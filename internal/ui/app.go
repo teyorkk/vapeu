@@ -406,8 +406,14 @@ func (m *AppModel) recalculateLayout() {
 		return
 	}
 
-	topHeight := (m.height * 52) / 100
-	bottomHeight := m.height - topHeight - 2
+	// 1 line for top header bar
+	availHeight := m.height - 1
+	if availHeight < 10 {
+		availHeight = 10
+	}
+
+	topHeight := (availHeight * 50) / 100
+	bottomHeight := availHeight - topHeight
 
 	m.editorPanel.SetSize(m.width, topHeight)
 	m.responsePanel.SetSize(m.width, bottomHeight)
@@ -448,11 +454,17 @@ func (m AppModel) View() string {
 
 	headerView := m.styles.HeaderFg.Render(brandBadge + " " + tabBar + newTabBtn + telescopeHint + " | Press '?' for Help ")
 
-	// Render Full-Width Editor & Response Panels (No side collections tree!)
+	// Render Full-Width Editor & Response Panels
 	editorView := m.editorPanel.View()
 	responseView := m.responsePanel.View()
 
 	mainLayout := lipgloss.JoinVertical(lipgloss.Left, headerView, editorView, responseView)
+
+	// Strict line limit: ensure output never exceeds terminal height
+	lines := strings.Split(mainLayout, "\n")
+	if len(lines) > m.height {
+		mainLayout = strings.Join(lines[:m.height], "\n")
+	}
 
 	// Overlay Modals if active
 	if m.modals.ActiveModal != ModalNone {

@@ -61,7 +61,7 @@ func NewEditorPanel(req *models.Request, styles theme.Styles) EditorPanel {
 	bodyIn := textarea.New()
 	bodyIn.Placeholder = "{\n  \"key\": \"value\"\n}"
 	bodyIn.SetValue(req.Body.Content)
-	bodyIn.SetHeight(6)
+	bodyIn.SetHeight(3)
 
 	headersIn := textarea.New()
 	headersIn.Placeholder = "Header-Name: Header-Value\nUser-Agent: apicli"
@@ -72,7 +72,7 @@ func NewEditorPanel(req *models.Request, styles theme.Styles) EditorPanel {
 		}
 	}
 	headersIn.SetValue(strings.Join(hLines, "\n"))
-	headersIn.SetHeight(6)
+	headersIn.SetHeight(3)
 
 	paramsIn := textarea.New()
 	paramsIn.Placeholder = "param1=value1\nparam2=value2"
@@ -83,7 +83,7 @@ func NewEditorPanel(req *models.Request, styles theme.Styles) EditorPanel {
 		}
 	}
 	paramsIn.SetValue(strings.Join(pLines, "\n"))
-	paramsIn.SetHeight(6)
+	paramsIn.SetHeight(3)
 
 	cookiesIn := textarea.New()
 	cookiesIn.Placeholder = "cookie1=value1\nsession_id=abc123xyz"
@@ -94,7 +94,7 @@ func NewEditorPanel(req *models.Request, styles theme.Styles) EditorPanel {
 		}
 	}
 	cookiesIn.SetValue(strings.Join(cLines, "\n"))
-	cookiesIn.SetHeight(6)
+	cookiesIn.SetHeight(3)
 
 	auth1 := textinput.New()
 	auth1.Placeholder = "Bearer Token / Username / Key Name"
@@ -160,7 +160,10 @@ func (p *EditorPanel) SetSize(w, h int) {
 	p.height = h
 	p.urlInput.Width = w - 24
 
-	inputH := h - 8
+	// h is total panel height including border (2 lines).
+	// Inner box height = h - 2.
+	// Header items take 5 lines (topBar 1, gap 1, tabBar 1, gap 1, title label 1).
+	inputH := h - 7
 	if inputH < 2 {
 		inputH = 2
 	}
@@ -426,6 +429,15 @@ func (p EditorPanel) View() string {
 	}
 
 	content := lipgloss.JoinVertical(lipgloss.Left, topBar, "\n", tabBar, "\n", tabContent)
+
+	// Ensure inner content line count NEVER exceeds p.height - 2
+	maxInnerLines := p.height - 2
+	if maxInnerLines > 0 {
+		contentLines := strings.Split(content, "\n")
+		if len(contentLines) > maxInnerLines {
+			content = strings.Join(contentLines[:maxInnerLines], "\n")
+		}
+	}
 
 	return style.
 		Width(p.width - 2).
