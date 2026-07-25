@@ -316,7 +316,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.modals.Show(ModalHistory)
 			m.updateFocus()
 			return m, nil
-		case "ctrl+i":
+		case "ctrl+i", "alt+i":
 			m.modals.Show(ModalImport)
 			m.updateFocus()
 			return m, nil

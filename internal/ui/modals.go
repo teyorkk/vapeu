@@ -279,7 +279,7 @@ func (m Modals) View(w, h int) string {
   Ctrl+R       Send Request
   Ctrl+X       Stop / Cancel Running Request
   Ctrl+H       Request History
-  Ctrl+I       Import cURL / OpenAPI
+  Alt+I / Ctrl+I Import cURL / OpenAPI
   Ctrl+W       Close Tab
   Ctrl+Q       Quit App
   Tab / Shift  Switch Panel Focus (Editor <-> Response)
