@@ -23,28 +23,32 @@ const (
 )
 
 var methods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+var authTypes = []models.AuthType{models.AuthNone, models.AuthBearer, models.AuthBasic, models.AuthAPIKey}
 
 type EditorPanel struct {
-	Request      *models.Request
-	styles       theme.Styles
-	width        int
-	height       int
-	focused      bool
-	methodIndex  int
-	urlInput     textinput.Model
-	activeSubTab EditorSubTab
-	bodyInput    textarea.Model
-	headersInput textarea.Model
-	paramsInput  textarea.Model
-	cookiesInput textarea.Model
-	authInputs   [3]textinput.Model // Basic: User/Pass; Bearer: Token; APIKey: Key/Val
+	Request       *models.Request
+	styles        theme.Styles
+	width         int
+	height        int
+	focused       bool
+	methodIndex   int
+	urlInput      textinput.Model
+	activeSubTab  EditorSubTab
+	bodyInput     textarea.Model
+	headersInput  textarea.Model
+	paramsInput   textarea.Model
+	cookiesInput  textarea.Model
+	authIndex     int
+	authInput1    textinput.Model
+	authInput2    textinput.Model
+	authFocusIdx  int
 }
 
 func NewEditorPanel(req *models.Request, styles theme.Styles) EditorPanel {
 	if req == nil {
 		req = &models.Request{
 			Method: "GET",
-			URL:    "https://httpbin.org/get",
+			URL:    "https://jsonplaceholder.typicode.com/todos/1",
 			Auth:   models.AuthConfig{Type: models.AuthNone},
 			Body:   models.RequestBody{Type: models.BodyJSON},
 		}
@@ -93,13 +97,10 @@ func NewEditorPanel(req *models.Request, styles theme.Styles) EditorPanel {
 	cookiesIn.SetHeight(6)
 
 	auth1 := textinput.New()
-	auth1.Placeholder = "Username / Bearer Token / Key Name"
+	auth1.Placeholder = "Bearer Token / Username / Key Name"
 
 	auth2 := textinput.New()
 	auth2.Placeholder = "Password / Key Value"
-
-	auth3 := textinput.New()
-	auth3.Placeholder = "Header or Query (for API Key)"
 
 	mIdx := 0
 	for i, m := range methods {
@@ -109,7 +110,15 @@ func NewEditorPanel(req *models.Request, styles theme.Styles) EditorPanel {
 		}
 	}
 
-	return EditorPanel{
+	aIdx := 0
+	for i, at := range authTypes {
+		if at == req.Auth.Type {
+			aIdx = i
+			break
+		}
+	}
+
+	p := EditorPanel{
 		Request:      req,
 		styles:       styles,
 		methodIndex:  mIdx,
@@ -119,7 +128,30 @@ func NewEditorPanel(req *models.Request, styles theme.Styles) EditorPanel {
 		headersInput: headersIn,
 		paramsInput:  paramsIn,
 		cookiesInput: cookiesIn,
-		authInputs:   [3]textinput.Model{auth1, auth2, auth3},
+		authIndex:    aIdx,
+		authInput1:   auth1,
+		authInput2:   auth2,
+	}
+
+	p.syncAuthFields()
+	return p
+}
+
+func (p *EditorPanel) syncAuthFields() {
+	switch p.Request.Auth.Type {
+	case models.AuthBearer:
+		p.authInput1.Placeholder = "Bearer Token"
+		p.authInput1.SetValue(p.Request.Auth.BearerToken)
+	case models.AuthBasic:
+		p.authInput1.Placeholder = "Username"
+		p.authInput1.SetValue(p.Request.Auth.BasicUser)
+		p.authInput2.Placeholder = "Password"
+		p.authInput2.SetValue(p.Request.Auth.BasicPass)
+	case models.AuthAPIKey:
+		p.authInput1.Placeholder = "API Key Name (Header)"
+		p.authInput1.SetValue(p.Request.Auth.APIKeyName)
+		p.authInput2.Placeholder = "API Key Value"
+		p.authInput2.SetValue(p.Request.Auth.APIKeyValue)
 	}
 }
 
@@ -131,6 +163,8 @@ func (p *EditorPanel) SetSize(w, h int) {
 	p.headersInput.SetWidth(w - 6)
 	p.paramsInput.SetWidth(w - 6)
 	p.cookiesInput.SetWidth(w - 6)
+	p.authInput1.Width = w - 20
+	p.authInput2.Width = w - 20
 }
 
 func (p *EditorPanel) SetFocused(focused bool) {
@@ -148,6 +182,8 @@ func (p *EditorPanel) blurAll() {
 	p.headersInput.Blur()
 	p.bodyInput.Blur()
 	p.cookiesInput.Blur()
+	p.authInput1.Blur()
+	p.authInput2.Blur()
 }
 
 func (p *EditorPanel) focusActiveSubTab() {
@@ -158,6 +194,8 @@ func (p *EditorPanel) focusActiveSubTab() {
 		p.paramsInput.Focus()
 	case SubTabHeaders:
 		p.headersInput.Focus()
+	case SubTabAuth:
+		p.authInput1.Focus()
 	case SubTabBody:
 		p.bodyInput.Focus()
 	case SubTabCookies:
@@ -179,6 +217,13 @@ func (p EditorPanel) Update(msg tea.Msg) (EditorPanel, tea.Cmd) {
 			p.methodIndex = (p.methodIndex + 1) % len(methods)
 			p.Request.Method = methods[p.methodIndex]
 			return p, nil
+		case "alt+a":
+			if p.activeSubTab == SubTabAuth {
+				p.authIndex = (p.authIndex + 1) % len(authTypes)
+				p.Request.Auth.Type = authTypes[p.authIndex]
+				p.syncAuthFields()
+				return p, nil
+			}
 		case "alt+1":
 			p.activeSubTab = SubTabParams
 			p.focusActiveSubTab()
@@ -189,7 +234,7 @@ func (p EditorPanel) Update(msg tea.Msg) (EditorPanel, tea.Cmd) {
 			return p, nil
 		case "alt+3":
 			p.activeSubTab = SubTabAuth
-			p.blurAll()
+			p.focusActiveSubTab()
 			return p, nil
 		case "alt+4":
 			p.activeSubTab = SubTabBody
@@ -203,9 +248,17 @@ func (p EditorPanel) Update(msg tea.Msg) (EditorPanel, tea.Cmd) {
 			if p.urlInput.Focused() {
 				p.focusActiveSubTab()
 				return p, nil
+			} else if p.activeSubTab == SubTabAuth && p.authInput1.Focused() && p.Request.Auth.Type != models.AuthBearer {
+				p.authInput1.Blur()
+				p.authInput2.Focus()
+				return p, nil
 			}
 		case "up":
-			if !p.urlInput.Focused() {
+			if p.activeSubTab == SubTabAuth && p.authInput2.Focused() {
+				p.authInput2.Blur()
+				p.authInput1.Focus()
+				return p, nil
+			} else if !p.urlInput.Focused() {
 				p.blurAll()
 				p.urlInput.Focus()
 				return p, nil
@@ -226,6 +279,13 @@ func (p EditorPanel) Update(msg tea.Msg) (EditorPanel, tea.Cmd) {
 	case SubTabHeaders:
 		p.headersInput, cmd = p.headersInput.Update(msg)
 		p.parseHeaders()
+	case SubTabAuth:
+		if p.authInput1.Focused() {
+			p.authInput1, cmd = p.authInput1.Update(msg)
+		} else if p.authInput2.Focused() {
+			p.authInput2, cmd = p.authInput2.Update(msg)
+		}
+		p.updateAuthValues()
 	case SubTabBody:
 		p.bodyInput, cmd = p.bodyInput.Update(msg)
 		p.Request.Body.Content = p.bodyInput.Value()
@@ -235,6 +295,20 @@ func (p EditorPanel) Update(msg tea.Msg) (EditorPanel, tea.Cmd) {
 	}
 
 	return p, cmd
+}
+
+func (p *EditorPanel) updateAuthValues() {
+	switch p.Request.Auth.Type {
+	case models.AuthBearer:
+		p.Request.Auth.BearerToken = p.authInput1.Value()
+	case models.AuthBasic:
+		p.Request.Auth.BasicUser = p.authInput1.Value()
+		p.Request.Auth.BasicPass = p.authInput2.Value()
+	case models.AuthAPIKey:
+		p.Request.Auth.APIKeyName = p.authInput1.Value()
+		p.Request.Auth.APIKeyValue = p.authInput2.Value()
+		p.Request.Auth.APIKeyIn = "header"
+	}
 }
 
 func (p *EditorPanel) parseHeaders() {
@@ -317,11 +391,20 @@ func (p EditorPanel) View() string {
 	case SubTabHeaders:
 		tabContent = "Headers (Header-Name: Value per line):\n" + p.headersInput.View()
 	case SubTabAuth:
-		authType := p.Request.Auth.Type
-		if authType == "" {
-			authType = models.AuthNone
+		authTypeStr := string(authTypes[p.authIndex])
+		authHeader := fmt.Sprintf("Authentication Type: [%s] (Press Alt+A to toggle type: None / Bearer / Basic / APIKey)\n", authTypeStr)
+
+		switch authTypes[p.authIndex] {
+		case models.AuthNone:
+			tabContent = authHeader + "\nNo authentication configured for this request."
+		case models.AuthBearer:
+			tabContent = authHeader + "\nBearer Token:\n" + p.authInput1.View()
+		case models.AuthBasic:
+			tabContent = authHeader + "\nUsername:\n" + p.authInput1.View() + "\nPassword:\n" + p.authInput2.View()
+		case models.AuthAPIKey:
+			tabContent = authHeader + "\nAPI Key Name:\n" + p.authInput1.View() + "\nAPI Key Value:\n" + p.authInput2.View()
 		}
-		tabContent = fmt.Sprintf("Authentication Type: %s (Bearer / Basic / APIKey)\n\nBearer Token / Auth details configured in Request object.", authType)
+
 	case SubTabBody:
 		tabContent = "Request Body (JSON / Raw):\n" + p.bodyInput.View()
 	case SubTabCookies:
@@ -350,6 +433,15 @@ func (p *EditorPanel) LoadRequest(req *models.Request) {
 			break
 		}
 	}
+
+	for i, at := range authTypes {
+		if at == req.Auth.Type {
+			p.authIndex = i
+			break
+		}
+	}
+
+	p.syncAuthFields()
 
 	var hLines []string
 	for _, h := range req.Headers {

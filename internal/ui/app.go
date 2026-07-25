@@ -77,30 +77,30 @@ func NewAppModel(st *storage.Storage) AppModel {
 			Nodes: []*models.CollectionNode{
 				{
 					ID:   uuid.New().String(),
-					Name: "HTTPBin Get",
+					Name: "JSONPlaceholder Todo",
 					Kind: models.NodeRequest,
 					Request: &models.Request{
 						ID:     uuid.New().String(),
-						Name:   "HTTPBin Get",
+						Name:   "JSONPlaceholder Todo",
 						Method: "GET",
-						URL:    "https://httpbin.org/get",
+						URL:    "https://jsonplaceholder.typicode.com/todos/1",
 						Auth:   models.AuthConfig{Type: models.AuthNone},
 						Body:   models.RequestBody{Type: models.BodyNone},
 					},
 				},
 				{
 					ID:   uuid.New().String(),
-					Name: "HTTPBin Post JSON",
+					Name: "JSONPlaceholder Create Post",
 					Kind: models.NodeRequest,
 					Request: &models.Request{
 						ID:     uuid.New().String(),
-						Name:   "HTTPBin Post JSON",
+						Name:   "JSONPlaceholder Create Post",
 						Method: "POST",
-						URL:    "https://httpbin.org/post",
+						URL:    "https://jsonplaceholder.typicode.com/posts",
 						Auth:   models.AuthConfig{Type: models.AuthNone},
 						Body: models.RequestBody{
 							Type:    models.BodyJSON,
-							Content: "{\n  \"hello\": \"world\",\n  \"user\": \"{{USER_ID}}\"\n}",
+							Content: "{\n  \"title\": \"foo\",\n  \"body\": \"bar\",\n  \"userId\": 1\n}",
 						},
 					},
 				},
@@ -153,9 +153,9 @@ func NewAppModel(st *storage.Storage) AppModel {
 func demoRequest() *models.Request {
 	return &models.Request{
 		ID:     uuid.New().String(),
-		Name:   "New Request",
+		Name:   "JSONPlaceholder Todo",
 		Method: "GET",
-		URL:    "https://httpbin.org/get",
+		URL:    "https://jsonplaceholder.typicode.com/todos/1",
 		Auth:   models.AuthConfig{Type: models.AuthNone},
 		Body:   models.RequestBody{Type: models.BodyNone},
 	}
