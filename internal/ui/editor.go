@@ -25,19 +25,18 @@ const (
 var methods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 
 type EditorPanel struct {
-	Request       *models.Request
-	styles        theme.Styles
-	width         int
-	height        int
-	focused       bool
-	methodIndex   int
-	urlInput      textinput.Model
-	activeSubTab  EditorSubTab
-	bodyInput     textarea.Model
-	headersInput  textarea.Model
-	paramsInput   textarea.Model
-	authInputs    [3]textinput.Model // Basic: User/Pass; Bearer: Token; APIKey: Key/Val
-	focusIndex    int                // 0: Method, 1: URL, 2: SubTab bar, 3: Editor Content
+	Request      *models.Request
+	styles       theme.Styles
+	width        int
+	height       int
+	focused      bool
+	methodIndex  int
+	urlInput     textinput.Model
+	activeSubTab EditorSubTab
+	bodyInput    textarea.Model
+	headersInput textarea.Model
+	paramsInput  textarea.Model
+	authInputs   [3]textinput.Model // Basic: User/Pass; Bearer: Token; APIKey: Key/Val
 }
 
 func NewEditorPanel(req *models.Request, styles theme.Styles) EditorPanel {
@@ -103,12 +102,11 @@ func NewEditorPanel(req *models.Request, styles theme.Styles) EditorPanel {
 		styles:       styles,
 		methodIndex:  mIdx,
 		urlInput:     urlIn,
-		activeSubTab: SubTabBody,
+		activeSubTab: SubTabParams,
 		bodyInput:    bodyIn,
 		headersInput: headersIn,
 		paramsInput:  paramsIn,
 		authInputs:   [3]textinput.Model{auth1, auth2, auth3},
-		focusIndex:   1, // focus URL input by default
 	}
 }
 
@@ -126,10 +124,30 @@ func (p *EditorPanel) SetFocused(focused bool) {
 	if focused {
 		p.urlInput.Focus()
 	} else {
-		p.urlInput.Blur()
-		p.bodyInput.Blur()
-		p.headersInput.Blur()
-		p.paramsInput.Blur()
+		p.blurAll()
+	}
+}
+
+func (p *EditorPanel) blurAll() {
+	p.urlInput.Blur()
+	p.paramsInput.Blur()
+	p.headersInput.Blur()
+	p.bodyInput.Blur()
+}
+
+func (p *EditorPanel) focusActiveSubTab() {
+	p.urlInput.Blur()
+	p.paramsInput.Blur()
+	p.headersInput.Blur()
+	p.bodyInput.Blur()
+
+	switch p.activeSubTab {
+	case SubTabParams:
+		p.paramsInput.Focus()
+	case SubTabHeaders:
+		p.headersInput.Focus()
+	case SubTabBody:
+		p.bodyInput.Focus()
 	}
 }
 
@@ -149,25 +167,30 @@ func (p EditorPanel) Update(msg tea.Msg) (EditorPanel, tea.Cmd) {
 			return p, nil
 		case "alt+1":
 			p.activeSubTab = SubTabParams
+			p.focusActiveSubTab()
 			return p, nil
 		case "alt+2":
 			p.activeSubTab = SubTabHeaders
+			p.focusActiveSubTab()
 			return p, nil
 		case "alt+3":
 			p.activeSubTab = SubTabAuth
+			p.blurAll()
 			return p, nil
 		case "alt+4":
 			p.activeSubTab = SubTabBody
+			p.focusActiveSubTab()
 			return p, nil
 		case "down":
 			if p.urlInput.Focused() {
-				p.urlInput.Blur()
-				p.bodyInput.Focus()
+				p.focusActiveSubTab()
+				return p, nil
 			}
 		case "up":
-			if p.bodyInput.Focused() {
-				p.bodyInput.Blur()
+			if !p.urlInput.Focused() {
+				p.blurAll()
 				p.urlInput.Focus()
+				return p, nil
 			}
 		}
 	}
@@ -179,15 +202,15 @@ func (p EditorPanel) Update(msg tea.Msg) (EditorPanel, tea.Cmd) {
 	}
 
 	switch p.activeSubTab {
-	case SubTabBody:
-		p.bodyInput, cmd = p.bodyInput.Update(msg)
-		p.Request.Body.Content = p.bodyInput.Value()
-	case SubTabHeaders:
-		p.headersInput, cmd = p.headersInput.Update(msg)
-		p.parseHeaders()
 	case SubTabParams:
 		p.paramsInput, cmd = p.paramsInput.Update(msg)
 		p.parseParams()
+	case SubTabHeaders:
+		p.headersInput, cmd = p.headersInput.Update(msg)
+		p.parseHeaders()
+	case SubTabBody:
+		p.bodyInput, cmd = p.bodyInput.Update(msg)
+		p.Request.Body.Content = p.bodyInput.Value()
 	}
 
 	return p, cmd
@@ -298,4 +321,12 @@ func (p *EditorPanel) LoadRequest(req *models.Request) {
 		}
 	}
 	p.headersInput.SetValue(strings.Join(hLines, "\n"))
+
+	var pLines []string
+	for _, qp := range req.QueryParams {
+		if qp.Enabled {
+			pLines = append(pLines, fmt.Sprintf("%s=%s", qp.Key, qp.Value))
+		}
+	}
+	p.paramsInput.SetValue(strings.Join(pLines, "\n"))
 }
