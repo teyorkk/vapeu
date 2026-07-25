@@ -114,6 +114,7 @@ type Styles struct {
 	Theme        Theme
 	Panel        lipgloss.Style
 	ActivePanel  lipgloss.Style
+	HeaderFg     lipgloss.Style
 	MethodGet    lipgloss.Style
 	MethodPost   lipgloss.Style
 	MethodPut    lipgloss.Style
@@ -144,6 +145,9 @@ func MakeStyles(t Theme) Styles {
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(t.ActiveBorder).
 			Padding(0, 1),
+		HeaderFg: lipgloss.NewStyle().
+			Foreground(t.HeaderFg).
+			Background(t.HeaderBg),
 		MethodGet: lipgloss.NewStyle().
 			Bold(true).
 			Foreground(t.MethodGet),

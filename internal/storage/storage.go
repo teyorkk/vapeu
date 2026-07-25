@@ -50,16 +50,16 @@ func (s *Storage) BaseDir() string {
 
 // Config Operations
 func (s *Storage) LoadConfig() (models.Config, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	cfg := models.NewDefaultConfig()
 	path := filepath.Join(s.baseDir, "config.yaml")
 
+	s.mu.RLock()
 	data, err := os.ReadFile(path)
+	s.mu.RUnlock()
+
+	cfg := models.NewDefaultConfig()
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Save default config
+			// Save default config without holding read lock
 			_ = s.SaveConfig(cfg)
 			return cfg, nil
 		}
