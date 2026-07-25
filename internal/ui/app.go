@@ -19,8 +19,7 @@ import (
 type PanelFocus int
 
 const (
-	FocusCollections PanelFocus = iota
-	FocusEditor
+	FocusEditor PanelFocus = iota
 	FocusResponse
 )
 
@@ -48,10 +47,9 @@ type AppModel struct {
 	requestCancelFunc context.CancelFunc
 
 	// Panels
-	collectionsPanel CollectionsPanel
-	editorPanel      EditorPanel
-	responsePanel    ResponsePanel
-	modals           Modals
+	editorPanel   EditorPanel
+	responsePanel ResponsePanel
+	modals        Modals
 
 	// Tabs
 	tabs      []tabItem
@@ -118,7 +116,6 @@ func NewAppModel(st *storage.Storage) AppModel {
 		ProxyURL:    cfg.ProxyURL,
 	})
 
-	collPanel := NewCollectionsPanel(cols, styles)
 	firstReq := demoRequest()
 	if len(cols) > 0 && len(cols[0].Nodes) > 0 && cols[0].Nodes[0].Request != nil {
 		firstReq = cols[0].Nodes[0].Request
@@ -133,21 +130,20 @@ func NewAppModel(st *storage.Storage) AppModel {
 	}
 
 	app := AppModel{
-		storage:          st,
-		config:           cfg,
-		styles:           styles,
-		client:           client,
-		collections:      cols,
-		environments:     envs,
-		history:          hist,
-		showSplash:       true,
-		activeFocus:      FocusEditor,
-		collectionsPanel: collPanel,
-		editorPanel:      editorPanel,
-		responsePanel:    respPanel,
-		modals:           modals,
-		tabs:             tabs,
-		activeTab:        0,
+		storage:       st,
+		config:        cfg,
+		styles:        styles,
+		client:        client,
+		collections:   cols,
+		environments:  envs,
+		history:       hist,
+		showSplash:    true,
+		activeFocus:   FocusEditor,
+		editorPanel:   editorPanel,
+		responsePanel: respPanel,
+		modals:        modals,
+		tabs:          tabs,
+		activeTab:     0,
 	}
 
 	app.updateFocus()
@@ -172,9 +168,32 @@ func (m AppModel) Init() tea.Cmd {
 }
 
 func (m *AppModel) updateFocus() {
-	m.collectionsPanel.SetFocused(m.activeFocus == FocusCollections && m.modals.ActiveModal == ModalNone && !m.showSplash)
 	m.editorPanel.SetFocused(m.activeFocus == FocusEditor && m.modals.ActiveModal == ModalNone && !m.showSplash)
 	m.responsePanel.SetFocused(m.activeFocus == FocusResponse && m.modals.ActiveModal == ModalNone && !m.showSplash)
+}
+
+func (m *AppModel) getAllRequests() []*models.Request {
+	var list []*models.Request
+	seen := make(map[string]bool)
+
+	for _, col := range m.collections {
+		for _, node := range col.Nodes {
+			if node.Request != nil && !seen[node.Request.ID] {
+				seen[node.Request.ID] = true
+				list = append(list, node.Request)
+			}
+		}
+	}
+
+	for _, item := range m.history {
+		if !seen[item.Request.ID] {
+			seen[item.Request.ID] = true
+			req := item.Request
+			list = append(list, &req)
+		}
+	}
+
+	return list
 }
 
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -242,23 +261,23 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.modals.ShowSave(m.editorPanel.Request.Name)
 			m.updateFocus()
 			return m, nil
-		case "tab":
-			m.activeFocus = (m.activeFocus + 1) % 3
+		case "alt+ ", "alt+space", "ctrl+f":
+			m.modals.ShowTelescope(m.getAllRequests())
 			m.updateFocus()
 			return m, nil
-		case "shift+tab":
-			m.activeFocus = (m.activeFocus + 2) % 3
+		case "tab", "shift+tab":
+			if m.activeFocus == FocusEditor {
+				m.activeFocus = FocusResponse
+			} else {
+				m.activeFocus = FocusEditor
+			}
 			m.updateFocus()
 			return m, nil
 		case "ctrl+1":
-			m.activeFocus = FocusCollections
-			m.updateFocus()
-			return m, nil
-		case "ctrl+2":
 			m.activeFocus = FocusEditor
 			m.updateFocus()
 			return m, nil
-		case "ctrl+3":
+		case "ctrl+2":
 			m.activeFocus = FocusResponse
 			m.updateFocus()
 			return m, nil
@@ -292,10 +311,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				resp, err := m.client.ExecuteWithContext(ctx, req, resolver)
 				return responseMsg{resp: resp, err: err}
 			}
-		case "ctrl+f":
-			m.modals.Show(ModalSearch)
-			m.updateFocus()
-			return m, nil
 		case "ctrl+h":
 			m.modals.historyItems = m.history
 			m.modals.Show(ModalHistory)
@@ -309,22 +324,11 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.modals.Show(ModalHelp)
 			m.updateFocus()
 			return m, nil
-		case "enter":
-			if m.activeFocus == FocusCollections {
-				selectedReq := m.collectionsPanel.SelectedRequest()
-				if selectedReq != nil {
-					m.loadRequest(selectedReq)
-				}
-			}
 		}
 	}
 
 	// Route update to focused panel
 	switch m.activeFocus {
-	case FocusCollections:
-		var cmd tea.Cmd
-		m.collectionsPanel, cmd = m.collectionsPanel.Update(msg)
-		cmds = append(cmds, cmd)
 	case FocusEditor:
 		var cmd tea.Cmd
 		m.editorPanel, cmd = m.editorPanel.Update(msg)
@@ -366,7 +370,6 @@ func (m *AppModel) saveCurrentRequest(name string) {
 	req.Name = name
 	m.tabs[m.activeTab].Title = name
 
-	// Find or update in collection
 	if len(m.collections) > 0 {
 		col := &m.collections[0]
 		found := false
@@ -387,7 +390,6 @@ func (m *AppModel) saveCurrentRequest(name string) {
 			})
 		}
 		_ = m.storage.SaveCollection(*col)
-		m.collectionsPanel.Refresh(m.collections)
 	}
 }
 
@@ -404,14 +406,10 @@ func (m *AppModel) recalculateLayout() {
 		return
 	}
 
-	topHeight := (m.height * 55) / 100
+	topHeight := (m.height * 52) / 100
 	bottomHeight := m.height - topHeight - 2
 
-	leftWidth := (m.width * 30) / 100
-	rightWidth := m.width - leftWidth
-
-	m.collectionsPanel.SetSize(leftWidth, topHeight)
-	m.editorPanel.SetSize(rightWidth, topHeight)
+	m.editorPanel.SetSize(m.width, topHeight)
 	m.responsePanel.SetSize(m.width, bottomHeight)
 }
 
@@ -424,7 +422,7 @@ func (m AppModel) View() string {
 		return m.renderSplash()
 	}
 
-	// Render Header with VAPEU branding & clear Tab Indicators
+	// Header with VAPEU branding & Telescope prompt hint
 	brandBadge := lipgloss.NewStyle().
 		Background(lipgloss.Color("#cba6f7")).
 		Foreground(lipgloss.Color("#11111b")).
@@ -446,18 +444,15 @@ func (m AppModel) View() string {
 
 	tabBar := strings.Join(tabTitles, " | ")
 	newTabBtn := lipgloss.NewStyle().Foreground(lipgloss.Color("#a6e3a1")).Render(" [+ Ctrl+T] ")
-	tabCountInfo := fmt.Sprintf("(%d Tabs)", len(m.tabs))
+	telescopeHint := lipgloss.NewStyle().Foreground(lipgloss.Color("#89b4fa")).Render(" [Alt+Space Telescope] ")
 
-	headerView := m.styles.HeaderFg.Render(brandBadge + " " + tabBar + newTabBtn + " " + tabCountInfo + " | Press '?' for Help ")
+	headerView := m.styles.HeaderFg.Render(brandBadge + " " + tabBar + newTabBtn + telescopeHint + " | Press '?' for Help ")
 
-	// Render 3 Panels
-	collView := m.collectionsPanel.View()
+	// Render Full-Width Editor & Response Panels (No side collections tree!)
 	editorView := m.editorPanel.View()
-	topSection := lipgloss.JoinHorizontal(lipgloss.Top, collView, editorView)
-
 	responseView := m.responsePanel.View()
 
-	mainLayout := lipgloss.JoinVertical(lipgloss.Left, headerView, topSection, responseView)
+	mainLayout := lipgloss.JoinVertical(lipgloss.Left, headerView, editorView, responseView)
 
 	// Overlay Modals if active
 	if m.modals.ActiveModal != ModalNone {

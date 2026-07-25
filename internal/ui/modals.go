@@ -32,13 +32,14 @@ type Modals struct {
 	importInput  textarea.Model
 	saveInput    textinput.Model
 	historyItems []models.HistoryItem
+	allRequests  []*models.Request
 	envItems     []models.Environment
 	selectedIdx  int
 }
 
 func NewModals(styles theme.Styles) Modals {
 	sIn := textinput.New()
-	sIn.Placeholder = "Search by request name, URL or method..."
+	sIn.Placeholder = "Type to search requests by name, URL, or method..."
 
 	impIn := textarea.New()
 	impIn.Placeholder = "Paste cURL command or OpenAPI YAML/JSON here..."
@@ -60,12 +61,18 @@ func (m *Modals) Show(t ModalType) {
 	m.ActiveModal = t
 	m.selectedIdx = 0
 	if t == ModalSearch {
+		m.searchInput.SetValue("")
 		m.searchInput.Focus()
 	} else if t == ModalImport {
 		m.importInput.Focus()
 	} else if t == ModalSave {
 		m.saveInput.Focus()
 	}
+}
+
+func (m *Modals) ShowTelescope(reqs []*models.Request) {
+	m.allRequests = reqs
+	m.Show(ModalSearch)
 }
 
 func (m *Modals) ShowSave(currentName string) {
@@ -78,6 +85,26 @@ func (m *Modals) Hide() {
 	m.searchInput.Blur()
 	m.importInput.Blur()
 	m.saveInput.Blur()
+}
+
+func (m Modals) filteredRequests() []*models.Request {
+	query := strings.ToLower(strings.TrimSpace(m.searchInput.Value()))
+	if query == "" {
+		return m.allRequests
+	}
+
+	var results []*models.Request
+	for _, req := range m.allRequests {
+		if req == nil {
+			continue
+		}
+		if strings.Contains(strings.ToLower(req.Name), query) ||
+			strings.Contains(strings.ToLower(req.URL), query) ||
+			strings.Contains(strings.ToLower(req.Method), query) {
+			results = append(results, req)
+		}
+	}
+	return results
 }
 
 func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string) {
@@ -100,7 +127,30 @@ func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string) {
 
 	switch m.ActiveModal {
 	case ModalSearch:
+		filtered := m.filteredRequests()
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "up":
+				if m.selectedIdx > 0 {
+					m.selectedIdx--
+				}
+				return m, nil, nil, ""
+			case "down":
+				if m.selectedIdx < len(filtered)-1 {
+					m.selectedIdx++
+				}
+				return m, nil, nil, ""
+			case "enter":
+				if m.selectedIdx >= 0 && m.selectedIdx < len(filtered) {
+					reqToLoad = filtered[m.selectedIdx]
+					m.Hide()
+					return m, nil, reqToLoad, ""
+				}
+			}
+		}
 		m.searchInput, cmd = m.searchInput.Update(msg)
+
 	case ModalSave:
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
@@ -113,6 +163,7 @@ func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string) {
 			}
 		}
 		m.saveInput, cmd = m.saveInput.Update(msg)
+
 	case ModalImport:
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
@@ -127,6 +178,7 @@ func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string) {
 			}
 		}
 		m.importInput, cmd = m.importInput.Update(msg)
+
 	case ModalHistory:
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
@@ -162,20 +214,45 @@ func (m Modals) View(w, h int) string {
 		BorderForeground(m.styles.Theme.ActiveBorder).
 		Background(m.styles.Theme.HeaderBg).
 		Padding(1, 2).
-		Width(w - 20)
+		Width(w - 16)
 
 	var title, body string
 
 	switch m.ActiveModal {
 	case ModalSearch:
-		title = "Search Requests (Press ESC to close)"
-		body = m.searchInput.View()
+		title = "🔭 Telescope Request Finder (Alt+Space / Ctrl+F) - Press ESC to exit"
+		filtered := m.filteredRequests()
+
+		var sb strings.Builder
+		sb.WriteString(m.searchInput.View() + "\n\n")
+
+		if len(filtered) == 0 {
+			sb.WriteString("  No matching requests found.")
+		} else {
+			maxDisplay := 10
+			if len(filtered) < maxDisplay {
+				maxDisplay = len(filtered)
+			}
+			for i := 0; i < maxDisplay; i++ {
+				req := filtered[i]
+				prefix := "  "
+				if i == m.selectedIdx {
+					prefix = "> "
+				}
+				methodBadge := m.styles.MethodStyle(req.Method).Render(fmt.Sprintf("[%s]", req.Method))
+				sb.WriteString(fmt.Sprintf("%s%s  %-20s %s\n", prefix, methodBadge, req.Name, m.styles.Value.Render(req.URL)))
+			}
+		}
+		body = sb.String()
+
 	case ModalSave:
 		title = "Save Request (Enter Name and press Enter)"
 		body = m.saveInput.View()
+
 	case ModalImport:
 		title = "Import Request (cURL / OpenAPI) (Press Enter to import, ESC to cancel)"
 		body = m.importInput.View()
+
 	case ModalHistory:
 		title = "Request History (Up/Down to navigate, Enter to load, ESC to close)"
 		var sb strings.Builder
@@ -187,25 +264,26 @@ func (m Modals) View(w, h int) string {
 				if i == m.selectedIdx {
 					prefix = "> "
 				}
-				sb.WriteString(fmt.Sprintf("%s[%s] %s (%d ms)\n", prefix, item.Request.Method, item.Request.URL, item.DurationMs))
+				methodBadge := m.styles.MethodStyle(item.Request.Method).Render(fmt.Sprintf("[%s]", item.Request.Method))
+				sb.WriteString(fmt.Sprintf("%s%s  %s (%d ms)\n", prefix, methodBadge, item.Request.URL, item.DurationMs))
 			}
 		}
 		body = sb.String()
+
 	case ModalHelp:
 		title = "Keyboard Shortcuts Reference"
 		body = `
-  Ctrl+N       New Request
+  Alt+Space    🔭 Telescope Request Finder (List & Search Requests)
+  Ctrl+N / T   New Request / New Tab
   Ctrl+S       Save Request (Prompts for Name)
   Ctrl+R       Send Request
   Ctrl+X       Stop / Cancel Running Request
-  Ctrl+F       Search Requests
   Ctrl+H       Request History
   Ctrl+I       Import cURL / OpenAPI
-  Ctrl+T       New Tab
   Ctrl+W       Close Tab
   Ctrl+Q       Quit App
-  Tab          Next Panel Focus
-  Shift+Tab    Previous Panel Focus
+  Tab / Shift  Switch Panel Focus (Editor <-> Response)
+  Ctrl+1 / 2   Focus Request Editor / Focus Response Viewer
   Alt+1..5     Switch Sub-Tabs (Params, Headers, Auth, Body, Cookies)
   ESC          Close Modal / Cancel
 `
