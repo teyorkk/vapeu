@@ -285,7 +285,7 @@ func (m Modals) View(w, h int) string {
   Tab / Shift  Switch Panel Focus (Editor <-> Response)
   Ctrl+1 / 2   Focus Request Editor / Focus Response Viewer
   Alt+1..5     Switch Sub-Tabs (Params, Headers, Auth, Body, Cookies)
-  ESC          Close Modal / Cancel
+  ESC / Alt+U  Focus URL Bar (from sub-tab text area) / Close Modal
 `
 	}
 
