@@ -1,93 +1,139 @@
 # VAPEU - Terminal API Client
 
-> A fast, keyboard-first, cross-platform terminal API client built in Go using Bubble Tea, Lip Gloss, and Bubbles.
+An offline-first, keyboard-driven terminal API client for testing and debugging HTTP APIs.
 
----
+## Overview
 
-## ✨ Key Features
+VAPEU is a cross-platform TUI application built with Go. Designed as a fast, lightweight alternative to Postman and Insomnia, it operates locally and over SSH using a keyboard-first workflow.
 
-- **🚀 Fast & Lightweight**: Startup in under 300 ms with minimal CPU/RAM footprint. Works locally and over SSH.
-- **⚡ Neovim Telescope Finder (`Alt+Space`)**: Instant fuzzy search across all your saved and historical requests by name, URL, or method.
-- **🖥️ Clean 2-Panel UI**: Full-width vertical split featuring a Request Editor top panel and Response Viewer bottom panel.
-- **🎨 Live Color Themes (`Alt+K`)**: Cycle through built-in themes instantly: **Dark**, **Light**, **Cyberpunk**, **Nord**, and **High Contrast**.
-- **🔑 Interactive Auth (`Alt+3`)**: Live configuration for Bearer Tokens, Basic Auth (User/Password), and API Keys (`Alt+A`).
-- **🛑 Stop / Cancel Requests (`Ctrl+X`)**: Abort long-running requests on demand with context cancellation.
-- **🌐 HTTP/2 & Smart Redirects**: High-performance HTTP/2 transport with connection pooling and automatic 307/308 redirect following.
-- **📦 Multi-Format Request Body**: JSON, Raw Text, XML, Form URL Encoded, Multipart Form Data, and Binary files.
-- **🔍 Response Viewer**: Pretty JSON formatting, raw response, syntax highlighting (via Chroma), status code badges, response time (ms), and size metrics.
-- **📥 cURL / OpenAPI / Postman Import (`Alt+I`)**: Import cURL commands, OpenAPI/Swagger specifications, and Postman collections directly.
-- **📜 Scoped & Dynamic Variables**: Support for `{{BASE_URL}}`, `{{TOKEN}}`, and dynamic functions (`{{uuid}}`, `{{timestamp}}`, `{{randomInt}}`, `{{randomString}}`, `{{hostname}}`).
+## Features
 
----
+- **Keyboard-Driven TUI**: Full-width dual-panel interface with customizable themes.
+- **Telescope Request Finder (`Alt+Space`)**: Real-time fuzzy filtering of saved and historical HTTP requests by name, URL, or method.
+- **HTTP Methods & Formats**: Support for GET, POST, PUT, PATCH, DELETE, HEAD, and OPTIONS with headers, query parameters, cookies, and payloads (JSON, XML, Form URL-Encoded, Multipart, and Binary).
+- **Interactive Authentication (`Alt+3`)**: Live credentials editor supporting Bearer Tokens, Basic Authentication, and API Keys (`Alt+A`).
+- **Dynamic Variable Resolver**: Support for environment variables (`{{BASE_URL}}`, `{{TOKEN}}`) and built-in functions (`{{uuid}}`, `{{timestamp}}`, `{{randomInt}}`, `{{randomString}}`, `{{hostname}}`).
+- **Response Metrics & Syntax Highlighting**: Color-coded JSON/XML rendering via Chroma, HTTP status badges, timing metrics (ms), and payload size indicators.
+- **Request Management & History**: Save named requests, organize open requests in tabs, and view automatically logged request history (`Ctrl+H`).
+- **Import / Export Capabilities**: Import cURL commands, OpenAPI/Swagger specifications, and Postman collections (`Alt+I`).
+- **HTTP/2 Transport & Redirect Handling**: Multi-streamed connection pooling with automatic 307/308 redirect resolution.
 
-## ⌨️ Keyboard Shortcuts
+## Tech Stack
 
-### General & Navigation
-| Shortcut | Action |
-|---|---|
-| `Alt+Space` / `Ctrl+F` | 🔭 Open Telescope Request Finder |
-| `Alt+Left` / `Alt+Right` (`Alt+[` / `Alt+]`) | Switch Open Request Tabs |
-| `Ctrl+N` / `Ctrl+T` | Create New Request / New Tab |
-| `Ctrl+W` | Close Current Tab |
-| `Tab` / `Shift+Tab` | Toggle Focus (Request Editor $\leftrightarrow$ Response Viewer) |
-| `Ctrl+1` / `Ctrl+2` | Direct Focus (1: Editor, 2: Response) |
-| `Alt+K` | 🎨 Cycle UI Color Theme |
-| `?` | Show Keyboard Reference Modal |
-| `Ctrl+Q` | Quit Application |
+- **Language**: Go 1.22+
+- **TUI Framework**: [Charm Bubble Tea](https://github.com/charmbracelet/bubbletea)
+- **Styling & Layout**: [Lip Gloss](https://github.com/charmbracelet/lipgloss)
+- **TUI Components**: [Bubbles](https://github.com/charmbracelet/bubbles)
+- **Syntax Highlighting**: [Chroma](https://github.com/alecthomas/chroma)
+- **CLI Engine**: [Cobra](https://github.com/spf13/cobra)
 
-### Request Operations
-| Shortcut | Action |
-|---|---|
-| `Ctrl+R` / `Ctrl+Enter` | Send HTTP Request |
-| `Ctrl+X` | 🛑 Stop / Cancel Running Request |
-| `Ctrl+S` | Save Request (Prompts for Name) |
-| `Alt+I` / `Ctrl+I` | Import cURL / OpenAPI Specification |
-| `Ctrl+H` | View Request History |
+## Project Structure
 
-### Sub-Tab Navigation
-| Shortcut | Action |
-|---|---|
-| `Alt+1` | Request Params (Query `key=value`) |
-| `Alt+2` | Request Headers (`Header: Value`) |
-| `Alt+3` | Request Auth (`Alt+A` to toggle None / Bearer / Basic / APIKey) |
-| `Alt+4` | Request Body (JSON / Raw / Form) |
-| `Alt+5` | Request Cookies (`cookie_name=value`) |
-| `ESC` / `Alt+U` | Focus URL Bar (from sub-tab text areas) |
-| `Alt+B` | Response Body Sub-Tab |
-| `Alt+H` | Response Headers Sub-Tab |
-| `Alt+C` | Response Cookies Sub-Tab |
-| `Alt+P` | Toggle Pretty JSON Formatting |
+```
+vapeu/
+├── .github/
+│   └── workflows/
+│       ├── ci.yml          # Continuous Integration workflow
+│       └── release.yml     # Multi-platform binary release workflow
+├── cmd/
+│   └── apicli/
+│       └── main.go         # CLI entrypoint
+├── internal/
+│   ├── api/                # HTTP client and transport engine
+│   ├── impexp/             # cURL, OpenAPI, and Postman parsers
+│   ├── models/             # Core domain models
+│   ├── storage/            # Local configuration and disk storage manager
+│   ├── theme/              # Design system tokens and color themes
+│   ├── ui/                 # Bubble Tea TUI components, layouts, and modals
+│   └── variables/          # Template variable resolver engine
+├── .gitignore
+├── go.mod
+├── go.sum
+└── README.md
+```
 
----
+## Getting Started
 
-## 🛠️ Installation & Usage
+### Prerequisites
 
-### Build Binary
+- Go 1.22 or higher installed on your system.
+
+### Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/teyorkk/vapeu.git
+cd vapeu
+```
+
+2. Build the executable binary:
 ```bash
 go build -o apicli ./cmd/apicli
 ```
 
-### Launch Interactive TUI
+3. Launch the interactive terminal UI:
 ```bash
 ./apicli
 ```
 
-### Run Direct CLI Request
+### CLI Commands
+
+#### Execute cURL Command Directly:
 ```bash
-./apicli run "curl -X POST https://jsonplaceholder.typicode.com/posts -d '{\"title\":\"foo\",\"body\":\"bar\",\"userId\":1}'"
+./apicli run "curl -X POST https://jsonplaceholder.typicode.com/posts -d '{\"title\":\"test\"}'"
 ```
 
-### Import OpenAPI / Postman Specs
+#### Import Specification File:
 ```bash
 ./apicli import path/to/openapi.yaml
 ```
 
----
+## Keyboard Shortcuts Reference
 
-## ⚙️ Configuration & Storage
+### General & Workspace
+| Key Binding | Action |
+| --- | --- |
+| `Alt+Space` / `Ctrl+F` | Open Telescope Request Finder |
+| `Alt+Left` / `Alt+Right` (`Alt+[` / `Alt+]`) | Switch Open Request Tabs |
+| `Ctrl+N` / `Ctrl+T` | Create New Request Tab |
+| `Ctrl+W` | Close Active Request Tab |
+| `Tab` / `Shift+Tab` | Toggle Focus between Request Editor and Response Viewer |
+| `Ctrl+1` / `Ctrl+2` | Direct Focus (1: Request Editor, 2: Response Viewer) |
+| `Alt+K` | Cycle UI Color Theme (Dark, Light, Cyberpunk, Nord, High Contrast) |
+| `?` | Display Help & Keyboard Reference Modal |
+| `Ctrl+Q` | Exit Application |
 
-VAPEU stores configuration and collection data locally in your home directory:
-- Config: `~/.apicli/config.yaml`
+### Request & Execution
+| Key Binding | Action |
+| --- | --- |
+| `Ctrl+R` / `Ctrl+Enter` | Send HTTP Request |
+| `Ctrl+X` | Cancel / Abort Active Request |
+| `Ctrl+S` | Save Request (Prompts for Name) |
+| `Alt+I` / `Ctrl+I` | Open Import Modal (cURL / OpenAPI / Postman) |
+| `Ctrl+H` | Open Request History Modal |
+
+### Editor & Sub-Tabs
+| Key Binding | Action |
+| --- | --- |
+| `Alt+1` | Select Query Parameters Sub-Tab |
+| `Alt+2` | Select Headers Sub-Tab |
+| `Alt+3` | Select Auth Sub-Tab (`Alt+A` cycles None / Bearer / Basic / APIKey) |
+| `Alt+4` | Select Request Body Sub-Tab |
+| `Alt+5` | Select Cookies Sub-Tab |
+| `ESC` / `Alt+U` | Focus URL Input Field (from sub-tab text areas) |
+
+### Response Viewer
+| Key Binding | Action |
+| --- | --- |
+| `Alt+B` | Select Response Body View |
+| `Alt+H` | Select Response Headers View |
+| `Alt+C` | Select Response Cookies View |
+| `Alt+P` | Toggle Pretty / Raw JSON Formatting |
+
+## Configuration
+
+Application data and configuration files are stored locally:
+- Configuration: `~/.apicli/config.yaml`
 - Collections: `~/.apicli/collections/`
 - Environments: `~/.apicli/environments/`
-- History: `~/.apicli/history.json`
+- History Log: `~/.apicli/history.json`
