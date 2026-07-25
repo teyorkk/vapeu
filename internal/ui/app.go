@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -40,10 +41,11 @@ type AppModel struct {
 	history      []models.HistoryItem
 	activeEnv    *models.Environment
 
-	showSplash  bool
-	activeFocus PanelFocus
-	width       int
-	height      int
+	showSplash        bool
+	activeFocus       PanelFocus
+	width             int
+	height            int
+	requestCancelFunc context.CancelFunc
 
 	// Panels
 	collectionsPanel CollectionsPanel
@@ -192,6 +194,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case responseMsg:
 		m.responsePanel.SetLoading(false)
+		m.requestCancelFunc = nil
 		if msg.resp != nil {
 			m.responsePanel.SetResponse(msg.resp)
 			histItem := models.HistoryItem{
@@ -217,9 +220,14 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.modals.ActiveModal != ModalNone {
 			var cmd tea.Cmd
 			var reqToLoad *models.Request
-			m.modals, cmd, reqToLoad = m.modals.Update(msg)
+			var savedName string
+			m.modals, cmd, reqToLoad, savedName = m.modals.Update(msg)
+
 			if reqToLoad != nil {
 				m.loadRequest(reqToLoad)
+			}
+			if savedName != "" {
+				m.saveCurrentRequest(savedName)
 			}
 			return m, cmd
 		}
@@ -227,6 +235,13 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+q":
 			return m, tea.Quit
+		case "ctrl+x":
+			m.cancelRunningRequest()
+			return m, nil
+		case "ctrl+s":
+			m.modals.ShowSave(m.editorPanel.Request.Name)
+			m.updateFocus()
+			return m, nil
 		case "tab":
 			m.activeFocus = (m.activeFocus + 1) % 3
 			m.updateFocus()
@@ -270,8 +285,11 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				resolver = variables.NewResolver(m.activeEnv.Variables, nil, nil, nil)
 			}
 
+			ctx, cancel := context.WithCancel(context.Background())
+			m.requestCancelFunc = cancel
+
 			return m, func() tea.Msg {
-				resp, err := m.client.Execute(req, resolver)
+				resp, err := m.client.ExecuteWithContext(ctx, req, resolver)
 				return responseMsg{resp: resp, err: err}
 			}
 		case "ctrl+f":
@@ -326,6 +344,53 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+func (m *AppModel) cancelRunningRequest() {
+	if m.requestCancelFunc != nil {
+		m.requestCancelFunc()
+		m.requestCancelFunc = nil
+	}
+	m.responsePanel.SetLoading(false)
+	m.responsePanel.SetResponse(&models.Response{
+		StatusCode: 0,
+		Error:      "Request cancelled by user (Ctrl+X)",
+		Timestamp:  time.Now().Format(time.RFC3339),
+	})
+}
+
+func (m *AppModel) saveCurrentRequest(name string) {
+	if name == "" {
+		return
+	}
+
+	req := m.editorPanel.Request
+	req.Name = name
+	m.tabs[m.activeTab].Title = name
+
+	// Find or update in collection
+	if len(m.collections) > 0 {
+		col := &m.collections[0]
+		found := false
+		for _, node := range col.Nodes {
+			if node.Request != nil && node.Request.ID == req.ID {
+				node.Name = name
+				node.Request = req
+				found = true
+				break
+			}
+		}
+		if !found {
+			col.Nodes = append(col.Nodes, &models.CollectionNode{
+				ID:      uuid.New().String(),
+				Name:    name,
+				Kind:    models.NodeRequest,
+				Request: req,
+			})
+		}
+		_ = m.storage.SaveCollection(*col)
+		m.collectionsPanel.Refresh(m.collections)
+	}
+}
+
 func (m *AppModel) loadRequest(req *models.Request) {
 	m.editorPanel.LoadRequest(req)
 	m.tabs[m.activeTab].Request = req
@@ -340,7 +405,7 @@ func (m *AppModel) recalculateLayout() {
 	}
 
 	topHeight := (m.height * 55) / 100
-	bottomHeight := m.height - topHeight - 2 // minus tab header height
+	bottomHeight := m.height - topHeight - 2
 
 	leftWidth := (m.width * 30) / 100
 	rightWidth := m.width - leftWidth
@@ -359,7 +424,7 @@ func (m AppModel) View() string {
 		return m.renderSplash()
 	}
 
-	// Render Header with VAPEU branding
+	// Render Header with VAPEU branding & clear Tab Indicators
 	brandBadge := lipgloss.NewStyle().
 		Background(lipgloss.Color("#cba6f7")).
 		Foreground(lipgloss.Color("#11111b")).
@@ -373,13 +438,17 @@ func (m AppModel) View() string {
 			title = "Request"
 		}
 		if i == m.activeTab {
-			tabTitles = append(tabTitles, m.styles.TabActive.Render(fmt.Sprintf("[%d: %s]", i+1, title)))
+			tabTitles = append(tabTitles, m.styles.TabActive.Render(fmt.Sprintf("▶ [%d: %s] ◀", i+1, title)))
 		} else {
 			tabTitles = append(tabTitles, m.styles.TabInactive.Render(fmt.Sprintf(" %d: %s ", i+1, title)))
 		}
 	}
-	tabBar := strings.Join(tabTitles, " ")
-	headerView := m.styles.HeaderFg.Render(brandBadge + " " + tabBar + " | Press '?' for Help ")
+
+	tabBar := strings.Join(tabTitles, " | ")
+	newTabBtn := lipgloss.NewStyle().Foreground(lipgloss.Color("#a6e3a1")).Render(" [+ Ctrl+T] ")
+	tabCountInfo := fmt.Sprintf("(%d Tabs)", len(m.tabs))
+
+	headerView := m.styles.HeaderFg.Render(brandBadge + " " + tabBar + newTabBtn + " " + tabCountInfo + " | Press '?' for Help ")
 
 	// Render 3 Panels
 	collView := m.collectionsPanel.View()

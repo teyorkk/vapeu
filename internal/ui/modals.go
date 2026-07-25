@@ -22,6 +22,7 @@ const (
 	ModalEnv
 	ModalImport
 	ModalHelp
+	ModalSave
 )
 
 type Modals struct {
@@ -29,6 +30,7 @@ type Modals struct {
 	styles       theme.Styles
 	searchInput  textinput.Model
 	importInput  textarea.Model
+	saveInput    textinput.Model
 	historyItems []models.HistoryItem
 	envItems     []models.Environment
 	selectedIdx  int
@@ -42,11 +44,15 @@ func NewModals(styles theme.Styles) Modals {
 	impIn.Placeholder = "Paste cURL command or OpenAPI YAML/JSON here..."
 	impIn.SetHeight(8)
 
+	saveIn := textinput.New()
+	saveIn.Placeholder = "Enter request name..."
+
 	return Modals{
 		ActiveModal: ModalNone,
 		styles:      styles,
 		searchInput: sIn,
 		importInput: impIn,
+		saveInput:   saveIn,
 	}
 }
 
@@ -57,35 +63,56 @@ func (m *Modals) Show(t ModalType) {
 		m.searchInput.Focus()
 	} else if t == ModalImport {
 		m.importInput.Focus()
+	} else if t == ModalSave {
+		m.saveInput.Focus()
 	}
+}
+
+func (m *Modals) ShowSave(currentName string) {
+	m.saveInput.SetValue(currentName)
+	m.Show(ModalSave)
 }
 
 func (m *Modals) Hide() {
 	m.ActiveModal = ModalNone
 	m.searchInput.Blur()
 	m.importInput.Blur()
+	m.saveInput.Blur()
 }
 
-func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request) {
+func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string) {
 	if m.ActiveModal == ModalNone {
-		return m, nil, nil
+		return m, nil, nil, ""
 	}
 
 	var cmd tea.Cmd
 	var reqToLoad *models.Request
+	var savedName string
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
 			m.Hide()
-			return m, nil, nil
+			return m, nil, nil, ""
 		}
 	}
 
 	switch m.ActiveModal {
 	case ModalSearch:
 		m.searchInput, cmd = m.searchInput.Update(msg)
+	case ModalSave:
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			if msg.String() == "enter" {
+				name := strings.TrimSpace(m.saveInput.Value())
+				if name != "" {
+					savedName = name
+					m.Hide()
+				}
+			}
+		}
+		m.saveInput, cmd = m.saveInput.Update(msg)
 	case ModalImport:
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
@@ -122,7 +149,7 @@ func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request) {
 		}
 	}
 
-	return m, cmd, reqToLoad
+	return m, cmd, reqToLoad, savedName
 }
 
 func (m Modals) View(w, h int) string {
@@ -143,6 +170,9 @@ func (m Modals) View(w, h int) string {
 	case ModalSearch:
 		title = "Search Requests (Press ESC to close)"
 		body = m.searchInput.View()
+	case ModalSave:
+		title = "Save Request (Enter Name and press Enter)"
+		body = m.saveInput.View()
 	case ModalImport:
 		title = "Import Request (cURL / OpenAPI) (Press Enter to import, ESC to cancel)"
 		body = m.importInput.View()
@@ -165,8 +195,9 @@ func (m Modals) View(w, h int) string {
 		title = "Keyboard Shortcuts Reference"
 		body = `
   Ctrl+N       New Request
-  Ctrl+S       Save Request
+  Ctrl+S       Save Request (Prompts for Name)
   Ctrl+R       Send Request
+  Ctrl+X       Stop / Cancel Running Request
   Ctrl+F       Search Requests
   Ctrl+H       Request History
   Ctrl+I       Import cURL / OpenAPI

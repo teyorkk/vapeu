@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -60,6 +61,10 @@ func NewClient(opts ClientOptions) *Client {
 }
 
 func (c *Client) Execute(req *models.Request, resolver *variables.Resolver) (*models.Response, error) {
+	return c.ExecuteWithContext(context.Background(), req, resolver)
+}
+
+func (c *Client) ExecuteWithContext(ctx context.Context, req *models.Request, resolver *variables.Resolver) (*models.Response, error) {
 	if resolver == nil {
 		resolver = variables.NewResolver(nil, nil, nil, nil)
 	}
@@ -155,7 +160,7 @@ func (c *Client) Execute(req *models.Request, resolver *variables.Resolver) (*mo
 		method = "GET"
 	}
 
-	httpReq, err := http.NewRequest(method, parsedURL.String(), bodyReader)
+	httpReq, err := http.NewRequestWithContext(ctx, method, parsedURL.String(), bodyReader)
 	if err != nil {
 		return &models.Response{
 			StatusCode: 0,
