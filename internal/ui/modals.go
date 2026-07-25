@@ -175,7 +175,7 @@ func (m Modals) View(w, h int) string {
   Ctrl+Q       Quit App
   Tab          Next Panel Focus
   Shift+Tab    Previous Panel Focus
-  Alt+1..4     Switch Sub-Tabs
+  Alt+1..5     Switch Sub-Tabs (Params, Headers, Auth, Body, Cookies)
   ESC          Close Modal / Cancel
 `
 	}

@@ -36,6 +36,7 @@ type EditorPanel struct {
 	bodyInput    textarea.Model
 	headersInput textarea.Model
 	paramsInput  textarea.Model
+	cookiesInput textarea.Model
 	authInputs   [3]textinput.Model // Basic: User/Pass; Bearer: Token; APIKey: Key/Val
 }
 
@@ -80,6 +81,17 @@ func NewEditorPanel(req *models.Request, styles theme.Styles) EditorPanel {
 	paramsIn.SetValue(strings.Join(pLines, "\n"))
 	paramsIn.SetHeight(6)
 
+	cookiesIn := textarea.New()
+	cookiesIn.Placeholder = "cookie1=value1\nsession_id=abc123xyz"
+	var cLines []string
+	for _, c := range req.Cookies {
+		if c.Enabled {
+			cLines = append(cLines, fmt.Sprintf("%s=%s", c.Key, c.Value))
+		}
+	}
+	cookiesIn.SetValue(strings.Join(cLines, "\n"))
+	cookiesIn.SetHeight(6)
+
 	auth1 := textinput.New()
 	auth1.Placeholder = "Username / Bearer Token / Key Name"
 
@@ -106,6 +118,7 @@ func NewEditorPanel(req *models.Request, styles theme.Styles) EditorPanel {
 		bodyInput:    bodyIn,
 		headersInput: headersIn,
 		paramsInput:  paramsIn,
+		cookiesInput: cookiesIn,
 		authInputs:   [3]textinput.Model{auth1, auth2, auth3},
 	}
 }
@@ -117,6 +130,7 @@ func (p *EditorPanel) SetSize(w, h int) {
 	p.bodyInput.SetWidth(w - 6)
 	p.headersInput.SetWidth(w - 6)
 	p.paramsInput.SetWidth(w - 6)
+	p.cookiesInput.SetWidth(w - 6)
 }
 
 func (p *EditorPanel) SetFocused(focused bool) {
@@ -133,13 +147,11 @@ func (p *EditorPanel) blurAll() {
 	p.paramsInput.Blur()
 	p.headersInput.Blur()
 	p.bodyInput.Blur()
+	p.cookiesInput.Blur()
 }
 
 func (p *EditorPanel) focusActiveSubTab() {
-	p.urlInput.Blur()
-	p.paramsInput.Blur()
-	p.headersInput.Blur()
-	p.bodyInput.Blur()
+	p.blurAll()
 
 	switch p.activeSubTab {
 	case SubTabParams:
@@ -148,6 +160,8 @@ func (p *EditorPanel) focusActiveSubTab() {
 		p.headersInput.Focus()
 	case SubTabBody:
 		p.bodyInput.Focus()
+	case SubTabCookies:
+		p.cookiesInput.Focus()
 	}
 }
 
@@ -181,6 +195,10 @@ func (p EditorPanel) Update(msg tea.Msg) (EditorPanel, tea.Cmd) {
 			p.activeSubTab = SubTabBody
 			p.focusActiveSubTab()
 			return p, nil
+		case "alt+5":
+			p.activeSubTab = SubTabCookies
+			p.focusActiveSubTab()
+			return p, nil
 		case "down":
 			if p.urlInput.Focused() {
 				p.focusActiveSubTab()
@@ -211,6 +229,9 @@ func (p EditorPanel) Update(msg tea.Msg) (EditorPanel, tea.Cmd) {
 	case SubTabBody:
 		p.bodyInput, cmd = p.bodyInput.Update(msg)
 		p.Request.Body.Content = p.bodyInput.Value()
+	case SubTabCookies:
+		p.cookiesInput, cmd = p.cookiesInput.Update(msg)
+		p.parseCookies()
 	}
 
 	return p, cmd
@@ -248,6 +269,22 @@ func (p *EditorPanel) parseParams() {
 	p.Request.QueryParams = params
 }
 
+func (p *EditorPanel) parseCookies() {
+	lines := strings.Split(p.cookiesInput.Value(), "\n")
+	var cookies []models.NameValuePair
+	for _, l := range lines {
+		parts := strings.SplitN(l, "=", 2)
+		if len(parts) == 2 {
+			cookies = append(cookies, models.NameValuePair{
+				Key:     strings.TrimSpace(parts[0]),
+				Value:   strings.TrimSpace(parts[1]),
+				Enabled: true,
+			})
+		}
+	}
+	p.Request.Cookies = cookies
+}
+
 func (p EditorPanel) View() string {
 	style := p.styles.Panel
 	if p.focused {
@@ -261,7 +298,7 @@ func (p EditorPanel) View() string {
 	topBar := lipgloss.JoinHorizontal(lipgloss.Center, methodStr, " ", urlView, " ", sendBtn)
 
 	// Sub-tabs
-	subTabs := []string{"Alt+1 Params", "Alt+2 Headers", "Alt+3 Auth", "Alt+4 Body", "Cookies"}
+	subTabs := []string{"Alt+1 Params", "Alt+2 Headers", "Alt+3 Auth", "Alt+4 Body", "Alt+5 Cookies"}
 	var renderedTabs []string
 	for i, t := range subTabs {
 		if EditorSubTab(i) == p.activeSubTab {
@@ -288,7 +325,7 @@ func (p EditorPanel) View() string {
 	case SubTabBody:
 		tabContent = "Request Body (JSON / Raw):\n" + p.bodyInput.View()
 	case SubTabCookies:
-		tabContent = "Cookies (Managed automatically or via Headers)."
+		tabContent = "Cookies (cookie_name=value per line):\n" + p.cookiesInput.View()
 	}
 
 	content := lipgloss.JoinVertical(lipgloss.Left, topBar, "\n", tabBar, "\n", tabContent)
@@ -329,4 +366,12 @@ func (p *EditorPanel) LoadRequest(req *models.Request) {
 		}
 	}
 	p.paramsInput.SetValue(strings.Join(pLines, "\n"))
+
+	var cLines []string
+	for _, c := range req.Cookies {
+		if c.Enabled {
+			cLines = append(cLines, fmt.Sprintf("%s=%s", c.Key, c.Value))
+		}
+	}
+	p.cookiesInput.SetValue(strings.Join(cLines, "\n"))
 }
