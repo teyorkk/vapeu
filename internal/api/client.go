@@ -23,10 +23,10 @@ type Client struct {
 }
 
 type ClientOptions struct {
-	TimeoutSec      int
-	InsecureSSL     bool
-	ProxyURL        string
-	FollowRedirects bool
+	TimeoutSec       int
+	InsecureSSL      bool
+	ProxyURL         string
+	DisableRedirects bool
 }
 
 func NewClient(opts ClientOptions) *Client {
@@ -38,6 +38,10 @@ func NewClient(opts ClientOptions) *Client {
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: opts.InsecureSSL,
 		},
+		ForceAttemptHTTP2:   true,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
 	}
 
 	if opts.ProxyURL != "" {
@@ -51,7 +55,7 @@ func NewClient(opts ClientOptions) *Client {
 		Transport: transport,
 	}
 
-	if !opts.FollowRedirects {
+	if opts.DisableRedirects {
 		httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		}
@@ -72,7 +76,7 @@ func (c *Client) ExecuteWithContext(ctx context.Context, req *models.Request, re
 	// Resolve target URL
 	resolvedURL := resolver.Resolve(req.URL)
 	if !strings.HasPrefix(resolvedURL, "http://") && !strings.HasPrefix(resolvedURL, "https://") {
-		resolvedURL = "http://" + resolvedURL
+		resolvedURL = "https://" + resolvedURL
 	}
 
 	parsedURL, err := url.Parse(resolvedURL)
@@ -98,6 +102,8 @@ func (c *Client) ExecuteWithContext(ctx context.Context, req *models.Request, re
 	contentType := ""
 
 	switch req.Body.Type {
+	case models.BodyNone:
+		bodyReader = nil
 	case models.BodyJSON:
 		resolvedBody := resolver.Resolve(req.Body.Content)
 		bodyReader = bytes.NewBufferString(resolvedBody)
