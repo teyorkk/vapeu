@@ -159,10 +159,24 @@ func (p *EditorPanel) SetSize(w, h int) {
 	p.width = w
 	p.height = h
 	p.urlInput.Width = w - 24
+
+	inputH := h - 8
+	if inputH < 2 {
+		inputH = 2
+	}
+
 	p.bodyInput.SetWidth(w - 6)
+	p.bodyInput.SetHeight(inputH)
+
 	p.headersInput.SetWidth(w - 6)
+	p.headersInput.SetHeight(inputH)
+
 	p.paramsInput.SetWidth(w - 6)
+	p.paramsInput.SetHeight(inputH)
+
 	p.cookiesInput.SetWidth(w - 6)
+	p.cookiesInput.SetHeight(inputH)
+
 	p.authInput1.Width = w - 20
 	p.authInput2.Width = w - 20
 }
