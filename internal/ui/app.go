@@ -446,8 +446,8 @@ func (m *AppModel) recalculateLayout() {
 		return
 	}
 
-	// 1 line header + 1 line safety buffer for bottom border line
-	availHeight := m.height - 2
+	// 1 line header
+	availHeight := m.height - 1
 	if availHeight < 10 {
 		availHeight = 10
 	}
@@ -499,12 +499,6 @@ func (m AppModel) View() string {
 	responseView := m.responsePanel.View()
 
 	mainLayout := lipgloss.JoinVertical(lipgloss.Left, headerView, editorView, responseView)
-
-	// Strict line limit: ensure output never exceeds terminal height
-	lines := strings.Split(mainLayout, "\n")
-	if len(lines) > m.height {
-		mainLayout = strings.Join(lines[:m.height], "\n")
-	}
 
 	// Overlay Modals if active
 	if m.modals.ActiveModal != ModalNone {
