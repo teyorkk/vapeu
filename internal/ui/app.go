@@ -248,7 +248,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var reqToLoad *models.Request
 			var savedName string
 			var newCol *models.Collection
-			m.modals, cmd, reqToLoad, savedName, newCol = m.modals.Update(msg)
+			var confirmedDelete *ConfirmedDelete
+			m.modals, cmd, reqToLoad, savedName, newCol, confirmedDelete = m.modals.Update(msg)
 
 			if reqToLoad != nil {
 				m.loadRequest(reqToLoad)
@@ -260,6 +261,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.collections = append(m.collections, *newCol)
 				_ = m.storage.SaveCollection(*newCol)
 				m.sidebarPanel.SetCollections(m.collections)
+			}
+			if confirmedDelete != nil {
+				m.performDeleteRequest(confirmedDelete.Request, confirmedDelete.CollectionID)
 			}
 			return m, cmd
 		}
@@ -401,8 +405,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if triggerNewReq {
 			m.createRequestUnderCurrentCollection()
 		}
-		if reqToDelete != nil {
-			m.deleteRequest(reqToDelete)
+		if reqToDelete != nil && reqToDelete.Request != nil {
+			m.modals.ShowConfirmDelete(reqToDelete.Request, reqToDelete.CollectionID)
+			m.updateFocus()
 		}
 
 	case FocusEditor:
@@ -515,27 +520,34 @@ func (m *AppModel) createRequestUnderCurrentCollection() {
 	m.updateFocus()
 }
 
-func (m *AppModel) deleteRequest(item *SidebarItem) {
-	if item == nil || item.Request == nil {
+func (m *AppModel) performDeleteRequest(req *models.Request, colID string) {
+	if req == nil {
 		return
 	}
 
 	var targetCol *models.Collection
 	for i := range m.collections {
-		if m.collections[i].ID == item.CollectionID {
+		if colID != "" && m.collections[i].ID == colID {
 			targetCol = &m.collections[i]
 			break
 		}
-	}
-	if targetCol == nil && item.CollectionIdx >= 0 && item.CollectionIdx < len(m.collections) {
-		targetCol = &m.collections[item.CollectionIdx]
+		// Fallback: search for the request across collections
+		for _, node := range m.collections[i].Nodes {
+			if node.Request != nil && node.Request.ID == req.ID {
+				targetCol = &m.collections[i]
+				break
+			}
+		}
+		if targetCol != nil {
+			break
+		}
 	}
 
 	if targetCol == nil {
 		return
 	}
 
-	deletedID := item.Request.ID
+	deletedID := req.ID
 	newNodes := make([]*models.CollectionNode, 0, len(targetCol.Nodes))
 	for _, node := range targetCol.Nodes {
 		if node.Request != nil && node.Request.ID == deletedID {
@@ -567,6 +579,16 @@ func (m *AppModel) deleteRequest(item *SidebarItem) {
 	if m.editorPanel.Request != nil && m.editorPanel.Request.ID == deletedID {
 		m.editorPanel.LoadRequest(m.tabs[m.activeTab].Request)
 	}
+
+	// Update telescope search cache
+	m.modals.allRequests = m.getAllRequests()
+}
+
+func (m *AppModel) deleteRequest(item *SidebarItem) {
+	if item == nil || item.Request == nil {
+		return
+	}
+	m.performDeleteRequest(item.Request, item.CollectionID)
 }
 
 func (m *AppModel) cycleTheme() {
@@ -610,8 +632,8 @@ func (m *AppModel) recalculateLayout() {
 		return
 	}
 
-	// 1 line header + 1 line safety bottom margin to guarantee bottom border fits without terminal scroll
-	availHeight := max(10, m.height-2)
+	// 1 line header + 2 line safety bottom margin to guarantee bottom border fits without terminal scroll
+	availHeight := max(8, m.height-3)
 	topHeight := (availHeight * 50) / 100
 	bottomHeight := availHeight - topHeight
 
@@ -681,7 +703,7 @@ func (m AppModel) View() string {
 	mainLayout := lipgloss.JoinVertical(lipgloss.Left, headerView, bodyView)
 
 	// Ensure total layout height NEVER overflows terminal height (with safety bottom margin)
-	maxLines := max(1, m.height-1)
+	maxLines := max(1, m.height-2)
 	lines := strings.Split(mainLayout, "\n")
 	if len(lines) > maxLines {
 		mainLayout = strings.Join(lines[:maxLines], "\n")

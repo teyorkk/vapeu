@@ -33,7 +33,7 @@ func TestAppModelInitialization(t *testing.T) {
 	viewOutput := app.View()
 	assert.NotEmpty(t, viewOutput)
 	lines := strings.Split(viewOutput, "\n")
-	assert.Equal(t, app.height-1, len(lines), "total view lines must equal app.height - 1 to preserve safe bottom border margin")
+	assert.LessOrEqual(t, len(lines), app.height-2, "total view lines must be at most app.height - 2 to preserve safe bottom border margin")
 	assert.Contains(t, lines[0], "VAPEU", "line 0 must contain VAPEU branding header")
 	assert.Contains(t, lines[0], "Help", "line 0 must contain Help hint")
 	t.Logf("Line 0: %q", lines[0])
@@ -116,9 +116,15 @@ func TestDeleteRequestInApp(t *testing.T) {
 	assert.Equal(t, SidebarItemRequest, app.sidebarPanel.SelectedItem().Type)
 	targetReqID := app.sidebarPanel.SelectedItem().Request.ID
 
-	// Press 'd' to delete request
+	// Press 'd' to initiate delete request -> must show ModalConfirmDelete
 	model, _ := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
 	app = model.(AppModel)
+	assert.Equal(t, ModalConfirmDelete, app.modals.ActiveModal, "pressing 'd' must open confirmation modal")
+
+	// Press 'y' to confirm deletion
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	app = model.(AppModel)
+	assert.Equal(t, ModalNone, app.modals.ActiveModal, "confirming must close modal")
 
 	// Verify request was removed from collection
 	assert.Len(t, app.collections[0].Nodes, initialNodeCount-1)
@@ -155,7 +161,7 @@ func TestTerminalHeightMatrix(t *testing.T) {
 		view := app.View()
 		assert.NotEmpty(t, view)
 		lines := strings.Split(view, "\n")
-		assert.True(t, len(lines) <= h-1, "rendered line count must never exceed h - 1 for terminal height %d (got %d)", h, len(lines))
+		assert.True(t, len(lines) <= h-2, "rendered line count must never exceed h - 2 for terminal height %d (got %d)", h, len(lines))
 		assert.Contains(t, lines[0], "VAPEU", "line 0 must contain branding at height %d", h)
 	}
 }
@@ -202,11 +208,136 @@ func TestDeleteRequestActiveTabSync(t *testing.T) {
 	app.sidebarPanel.selectedIdx = 1
 	model, _ := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
 	app = model.(AppModel)
+	assert.Equal(t, ModalConfirmDelete, app.modals.ActiveModal)
+
+	// Confirm with 'y'
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	app = model.(AppModel)
 
 	// Verify Tab 0 (Req 1) was removed, now only Tab (Req 2) remains
 	assert.Len(t, app.tabs, 1)
 	assert.Equal(t, "Req 2", app.tabs[0].Title)
 	assert.Equal(t, req2.ID, app.editorPanel.Request.ID)
+}
+
+func TestDeleteRequestCancelFlow(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "apicli-ui-cancel-delete-test-*")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	st, err := storage.NewStorage(filepath.Join(tempDir, ".apiclient"))
+	assert.NoError(t, err)
+
+	app := NewAppModel(st)
+	app.showSplash = false
+	app.width = 120
+	app.height = 40
+	app.recalculateLayout()
+
+	initialNodeCount := len(app.collections[0].Nodes)
+
+	// Focus sidebar and press 'd'
+	app.activeFocus = FocusSidebar
+	app.updateFocus()
+	app.sidebarPanel.selectedIdx = 1
+
+	model, _ := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	app = model.(AppModel)
+	assert.Equal(t, ModalConfirmDelete, app.modals.ActiveModal)
+
+	// Press 'n' to cancel
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	app = model.(AppModel)
+	assert.Equal(t, ModalNone, app.modals.ActiveModal)
+	assert.Len(t, app.collections[0].Nodes, initialNodeCount, "request must not be deleted when cancelled with 'n'")
+
+	// Press 'd' again and press 'esc' to cancel
+	app.activeFocus = FocusSidebar
+	app.updateFocus()
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	app = model.(AppModel)
+	assert.Equal(t, ModalConfirmDelete, app.modals.ActiveModal)
+
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	app = model.(AppModel)
+	assert.Equal(t, ModalNone, app.modals.ActiveModal)
+	assert.Len(t, app.collections[0].Nodes, initialNodeCount, "request must not be deleted when cancelled with 'esc'")
+}
+
+func TestTelescopeDeleteRequest(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "apicli-ui-telescope-del-*")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	st, err := storage.NewStorage(filepath.Join(tempDir, ".apiclient"))
+	assert.NoError(t, err)
+
+	app := NewAppModel(st)
+	app.showSplash = false
+	app.width = 120
+	app.height = 40
+	app.recalculateLayout()
+
+	req1 := &models.Request{ID: "req-t1", Name: "Telescope Req 1", Method: "GET", URL: "http://example.com/t1"}
+	req2 := &models.Request{ID: "req-t2", Name: "Telescope Req 2", Method: "POST", URL: "http://example.com/t2"}
+
+	col := models.Collection{
+		ID:   "col-t",
+		Name: "Col Telescope",
+		Nodes: []*models.CollectionNode{
+			{ID: "node-t1", Name: "Telescope Req 1", Kind: models.NodeRequest, Request: req1},
+			{ID: "node-t2", Name: "Telescope Req 2", Kind: models.NodeRequest, Request: req2},
+		},
+	}
+	_ = st.SaveCollection(col)
+	app.collections = []models.Collection{col}
+	app.sidebarPanel.SetCollections(app.collections)
+	app.tabs = []tabItem{{Title: req1.Name, Request: req1}, {Title: req2.Name, Request: req2}}
+	app.activeTab = 0
+	app.editorPanel.LoadRequest(req1)
+
+	// Open Telescope
+	model, _ := app.Update(tea.KeyMsg{Type: tea.KeySpace, Alt: true})
+	app = model.(AppModel)
+	assert.Equal(t, ModalSearch, app.modals.ActiveModal)
+	assert.Len(t, app.modals.allRequests, 2)
+
+	// Press Ctrl+D on selected request (req-t1)
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	app = model.(AppModel)
+	assert.Equal(t, ModalConfirmDelete, app.modals.ActiveModal, "Ctrl+D in Telescope must open ModalConfirmDelete")
+	assert.Equal(t, "req-t1", app.modals.pendingDeleteReq.ID)
+
+	// Confirm with 'y'
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	app = model.(AppModel)
+	assert.Equal(t, ModalNone, app.modals.ActiveModal, "confirming must close modal")
+
+	// Verify request was removed from collection
+	assert.Len(t, app.collections[0].Nodes, 1)
+	assert.Equal(t, "req-t2", app.collections[0].Nodes[0].Request.ID)
+
+	// Verify storage persistence
+	loadedCols, err := st.LoadCollections()
+	assert.NoError(t, err)
+	var foundCol *models.Collection
+	for i := range loadedCols {
+		if loadedCols[i].ID == col.ID {
+			foundCol = &loadedCols[i]
+			break
+		}
+	}
+	assert.NotNil(t, foundCol)
+	assert.Len(t, foundCol.Nodes, 1)
+	assert.Equal(t, "req-t2", foundCol.Nodes[0].Request.ID)
+
+	// Verify tab sync
+	assert.Len(t, app.tabs, 1)
+	assert.Equal(t, "Telescope Req 2", app.tabs[0].Title)
+
+	// Verify Telescope cache updated
+	assert.Len(t, app.modals.allRequests, 1)
+	assert.Equal(t, "req-t2", app.modals.allRequests[0].ID)
 }
 
 

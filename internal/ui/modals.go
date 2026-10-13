@@ -25,7 +25,13 @@ const (
 	ModalHelp
 	ModalSave
 	ModalCreateCollection
+	ModalConfirmDelete
 )
+
+type ConfirmedDelete struct {
+	Request      *models.Request
+	CollectionID string
+}
 
 type Modals struct {
 	ActiveModal     ModalType
@@ -40,6 +46,10 @@ type Modals struct {
 	allRequests     []*models.Request
 	envItems        []models.Environment
 	selectedIdx     int
+
+	// Confirm delete state
+	pendingDeleteReq   *models.Request
+	pendingDeleteColID string
 }
 
 func NewModals(styles theme.Styles) Modals {
@@ -102,6 +112,12 @@ func (m *Modals) ShowSave(currentName string) {
 	m.Show(ModalSave)
 }
 
+func (m *Modals) ShowConfirmDelete(req *models.Request, colID string) {
+	m.pendingDeleteReq = req
+	m.pendingDeleteColID = colID
+	m.Show(ModalConfirmDelete)
+}
+
 func (m *Modals) Hide() {
 	m.ActiveModal = ModalNone
 	m.searchInput.Blur()
@@ -109,6 +125,8 @@ func (m *Modals) Hide() {
 	m.saveInput.Blur()
 	m.colNameInput.Blur()
 	m.colBaseURLInput.Blur()
+	m.pendingDeleteReq = nil
+	m.pendingDeleteColID = ""
 }
 
 func (m Modals) filteredRequests() []*models.Request {
@@ -131,22 +149,23 @@ func (m Modals) filteredRequests() []*models.Request {
 	return results
 }
 
-func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string, *models.Collection) {
+func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string, *models.Collection, *ConfirmedDelete) {
 	if m.ActiveModal == ModalNone {
-		return m, nil, nil, "", nil
+		return m, nil, nil, "", nil, nil
 	}
 
 	var cmd tea.Cmd
 	var reqToLoad *models.Request
 	var savedName string
 	var newCol *models.Collection
+	var confirmedDelete *ConfirmedDelete
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
 			m.Hide()
-			return m, nil, nil, "", nil
+			return m, nil, nil, "", nil, nil
 		}
 	}
 
@@ -160,17 +179,23 @@ func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string, *
 				if m.selectedIdx > 0 {
 					m.selectedIdx--
 				}
-				return m, nil, nil, "", nil
+				return m, nil, nil, "", nil, nil
 			case "down":
 				if m.selectedIdx < len(filtered)-1 {
 					m.selectedIdx++
 				}
-				return m, nil, nil, "", nil
+				return m, nil, nil, "", nil, nil
 			case "enter":
 				if m.selectedIdx >= 0 && m.selectedIdx < len(filtered) {
 					reqToLoad = filtered[m.selectedIdx]
 					m.Hide()
-					return m, nil, reqToLoad, "", nil
+					return m, nil, reqToLoad, "", nil, nil
+				}
+			case "ctrl+d", "delete":
+				if m.selectedIdx >= 0 && m.selectedIdx < len(filtered) {
+					targetReq := filtered[m.selectedIdx]
+					m.ShowConfirmDelete(targetReq, "")
+					return m, nil, nil, "", nil, nil
 				}
 			}
 		}
@@ -202,7 +227,7 @@ func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string, *
 					m.colNameInput.Blur()
 					m.colBaseURLInput.Focus()
 				}
-				return m, nil, nil, "", nil
+				return m, nil, nil, "", nil, nil
 			case "shift+tab", "up":
 				m.activeColInput = (m.activeColInput + 1) % 2
 				if m.activeColInput == 0 {
@@ -212,7 +237,7 @@ func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string, *
 					m.colNameInput.Blur()
 					m.colBaseURLInput.Focus()
 				}
-				return m, nil, nil, "", nil
+				return m, nil, nil, "", nil, nil
 			case "enter":
 				name := strings.TrimSpace(m.colNameInput.Value())
 				baseURL := strings.TrimSpace(m.colBaseURLInput.Value())
@@ -224,7 +249,7 @@ func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string, *
 						Nodes:   []*models.CollectionNode{},
 					}
 					m.Hide()
-					return m, nil, nil, "", newCol
+					return m, nil, nil, "", newCol, nil
 				}
 			}
 		}
@@ -269,9 +294,28 @@ func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string, *
 				}
 			}
 		}
+
+	case ModalConfirmDelete:
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "y", "Y":
+				if m.pendingDeleteReq != nil {
+					confirmedDelete = &ConfirmedDelete{
+						Request:      m.pendingDeleteReq,
+						CollectionID: m.pendingDeleteColID,
+					}
+				}
+				m.Hide()
+				return m, nil, nil, "", nil, confirmedDelete
+			case "n", "N":
+				m.Hide()
+				return m, nil, nil, "", nil, nil
+			}
+		}
 	}
 
-	return m, cmd, reqToLoad, savedName, newCol
+	return m, cmd, reqToLoad, savedName, newCol, confirmedDelete
 }
 
 func (m Modals) View(w, h int) string {
@@ -290,7 +334,7 @@ func (m Modals) View(w, h int) string {
 
 	switch m.ActiveModal {
 	case ModalSearch:
-		title = "🔭 Telescope Request Finder (Alt+Space / Ctrl+F) - Press ESC to exit"
+		title = "🔭 Telescope Request Finder (Alt+Space / Ctrl+F) - [Ctrl+D / Del] Delete - Press ESC to exit"
 		filtered := m.filteredRequests()
 
 		var sb strings.Builder
@@ -362,7 +406,8 @@ func (m Modals) View(w, h int) string {
   Alt+S        📂 Toggle Retractable Collections Sidebar
   c            Create New Collection (when focused on Sidebar)
   n            Create New Request under Collection (when focused on Sidebar)
-  Alt+Space    🔭 Telescope Request Finder (List & Search Requests)
+  d / Del      Delete Request with confirmation (when focused on Sidebar)
+  Alt+Space    🔭 Telescope Request Finder (Ctrl+D/Del to delete request)
   Alt+M        Toggle HTTP Method (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS)
   Alt+K        🎨 Cycle UI Color Theme (Dark, Light, Cyberpunk, Nord, HighContrast)
   Ctrl+N / T   New Request / New Tab
@@ -379,6 +424,19 @@ func (m Modals) View(w, h int) string {
   Alt+1..5     Switch Sub-Tabs (Params, Headers, Auth, Body, Cookies)
   ESC / Alt+U  Focus URL Bar (from sub-tab text area) / Close Modal
 `
+	case ModalConfirmDelete:
+		title = "⚠️  Confirm Delete Request"
+		reqName := "Unknown Request"
+		if m.pendingDeleteReq != nil && m.pendingDeleteReq.Name != "" {
+			reqName = m.pendingDeleteReq.Name
+		}
+		warnText := lipgloss.NewStyle().Foreground(lipgloss.Color("#f38ba8")).Bold(true).Render(
+			fmt.Sprintf("Are you sure you want to delete '%s'?", reqName),
+		)
+		promptText := lipgloss.NewStyle().Foreground(lipgloss.Color("#cdd6f4")).Render(
+			"This action cannot be undone.\n\nPress [y] to Confirm  |  [n / Esc] to Cancel",
+		)
+		body = lipgloss.JoinVertical(lipgloss.Center, warnText, "\n", promptText)
 	}
 
 	content := fmt.Sprintf("%s\n\n%s", m.styles.Title.Render(title), body)

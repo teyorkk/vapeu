@@ -47,7 +47,7 @@ func (p *ResponsePanel) SetSize(w, h int) {
 	p.width = w
 	p.height = h
 	p.viewport.Width = w - 4
-	p.viewport.Height = h - 6
+	p.viewport.Height = max(1, h-3)
 }
 
 func (p *ResponsePanel) SetFocused(focused bool) {
@@ -188,7 +188,17 @@ func (p ResponsePanel) View() string {
 	tabBar := strings.Join(renderedTabs, "  ")
 
 	topLine := lipgloss.JoinHorizontal(lipgloss.Center, statusHeader, " | ", tabBar)
-	content := lipgloss.JoinVertical(lipgloss.Left, topLine, "\n", p.viewport.View())
+	content := lipgloss.JoinVertical(lipgloss.Left, topLine, p.viewport.View())
+
+	// Clamp inner content to exactly p.height - 2 lines so the border box is never overflowed
+	maxInnerLines := p.height - 2
+	if maxInnerLines < 1 {
+		maxInnerLines = 1
+	}
+	contentLines := strings.Split(content, "\n")
+	if len(contentLines) > maxInnerLines {
+		content = strings.Join(contentLines[:maxInnerLines], "\n")
+	}
 
 	return style.
 		Width(p.width - 2).
