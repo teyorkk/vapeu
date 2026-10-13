@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/google/uuid"
 )
 
 type ModalType int
@@ -23,18 +24,22 @@ const (
 	ModalImport
 	ModalHelp
 	ModalSave
+	ModalCreateCollection
 )
 
 type Modals struct {
-	ActiveModal  ModalType
-	styles       theme.Styles
-	searchInput  textinput.Model
-	importInput  textarea.Model
-	saveInput    textinput.Model
-	historyItems []models.HistoryItem
-	allRequests  []*models.Request
-	envItems     []models.Environment
-	selectedIdx  int
+	ActiveModal     ModalType
+	styles          theme.Styles
+	searchInput     textinput.Model
+	importInput     textarea.Model
+	saveInput       textinput.Model
+	colNameInput    textinput.Model
+	colBaseURLInput textinput.Model
+	activeColInput  int // 0: Name, 1: BaseURL
+	historyItems    []models.HistoryItem
+	allRequests     []*models.Request
+	envItems        []models.Environment
+	selectedIdx     int
 }
 
 func NewModals(styles theme.Styles) Modals {
@@ -48,12 +53,20 @@ func NewModals(styles theme.Styles) Modals {
 	saveIn := textinput.New()
 	saveIn.Placeholder = "Enter request name..."
 
+	cnIn := textinput.New()
+	cnIn.Placeholder = "Collection Name (e.g. User Service API)..."
+
+	cbIn := textinput.New()
+	cbIn.Placeholder = "Base URL (e.g. https://api.example.com/v1)..."
+
 	return Modals{
-		ActiveModal: ModalNone,
-		styles:      styles,
-		searchInput: sIn,
-		importInput: impIn,
-		saveInput:   saveIn,
+		ActiveModal:     ModalNone,
+		styles:          styles,
+		searchInput:     sIn,
+		importInput:     impIn,
+		saveInput:       saveIn,
+		colNameInput:    cnIn,
+		colBaseURLInput: cbIn,
 	}
 }
 
@@ -68,6 +81,15 @@ func (m *Modals) Show(t ModalType) {
 	} else if t == ModalSave {
 		m.saveInput.Focus()
 	}
+}
+
+func (m *Modals) ShowCreateCollection() {
+	m.colNameInput.SetValue("")
+	m.colBaseURLInput.SetValue("")
+	m.activeColInput = 0
+	m.colNameInput.Focus()
+	m.colBaseURLInput.Blur()
+	m.Show(ModalCreateCollection)
 }
 
 func (m *Modals) ShowTelescope(reqs []*models.Request) {
@@ -85,6 +107,8 @@ func (m *Modals) Hide() {
 	m.searchInput.Blur()
 	m.importInput.Blur()
 	m.saveInput.Blur()
+	m.colNameInput.Blur()
+	m.colBaseURLInput.Blur()
 }
 
 func (m Modals) filteredRequests() []*models.Request {
@@ -107,21 +131,22 @@ func (m Modals) filteredRequests() []*models.Request {
 	return results
 }
 
-func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string) {
+func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string, *models.Collection) {
 	if m.ActiveModal == ModalNone {
-		return m, nil, nil, ""
+		return m, nil, nil, "", nil
 	}
 
 	var cmd tea.Cmd
 	var reqToLoad *models.Request
 	var savedName string
+	var newCol *models.Collection
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
 			m.Hide()
-			return m, nil, nil, ""
+			return m, nil, nil, "", nil
 		}
 	}
 
@@ -135,17 +160,17 @@ func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string) {
 				if m.selectedIdx > 0 {
 					m.selectedIdx--
 				}
-				return m, nil, nil, ""
+				return m, nil, nil, "", nil
 			case "down":
 				if m.selectedIdx < len(filtered)-1 {
 					m.selectedIdx++
 				}
-				return m, nil, nil, ""
+				return m, nil, nil, "", nil
 			case "enter":
 				if m.selectedIdx >= 0 && m.selectedIdx < len(filtered) {
 					reqToLoad = filtered[m.selectedIdx]
 					m.Hide()
-					return m, nil, reqToLoad, ""
+					return m, nil, reqToLoad, "", nil
 				}
 			}
 		}
@@ -163,6 +188,51 @@ func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string) {
 			}
 		}
 		m.saveInput, cmd = m.saveInput.Update(msg)
+
+	case ModalCreateCollection:
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "tab", "down":
+				m.activeColInput = (m.activeColInput + 1) % 2
+				if m.activeColInput == 0 {
+					m.colNameInput.Focus()
+					m.colBaseURLInput.Blur()
+				} else {
+					m.colNameInput.Blur()
+					m.colBaseURLInput.Focus()
+				}
+				return m, nil, nil, "", nil
+			case "shift+tab", "up":
+				m.activeColInput = (m.activeColInput + 1) % 2
+				if m.activeColInput == 0 {
+					m.colNameInput.Focus()
+					m.colBaseURLInput.Blur()
+				} else {
+					m.colNameInput.Blur()
+					m.colBaseURLInput.Focus()
+				}
+				return m, nil, nil, "", nil
+			case "enter":
+				name := strings.TrimSpace(m.colNameInput.Value())
+				baseURL := strings.TrimSpace(m.colBaseURLInput.Value())
+				if name != "" {
+					newCol = &models.Collection{
+						ID:      uuid.New().String(),
+						Name:    name,
+						BaseURL: baseURL,
+						Nodes:   []*models.CollectionNode{},
+					}
+					m.Hide()
+					return m, nil, nil, "", newCol
+				}
+			}
+		}
+		if m.activeColInput == 0 {
+			m.colNameInput, cmd = m.colNameInput.Update(msg)
+		} else {
+			m.colBaseURLInput, cmd = m.colBaseURLInput.Update(msg)
+		}
 
 	case ModalImport:
 		switch msg := msg.(type) {
@@ -201,7 +271,7 @@ func (m Modals) Update(msg tea.Msg) (Modals, tea.Cmd, *models.Request, string) {
 		}
 	}
 
-	return m, cmd, reqToLoad, savedName
+	return m, cmd, reqToLoad, savedName, newCol
 }
 
 func (m Modals) View(w, h int) string {
@@ -270,9 +340,28 @@ func (m Modals) View(w, h int) string {
 		}
 		body = sb.String()
 
+	case ModalCreateCollection:
+		title = "Create New Collection (Tab to switch inputs, Enter to save, ESC to cancel)"
+		nameLabel := m.styles.Label.Render("Collection Name:")
+		nameBox := m.colNameInput.View()
+		baseURLLabel := m.styles.Label.Render("Base URL:")
+		baseURLBox := m.colBaseURLInput.View()
+		body = lipgloss.JoinVertical(lipgloss.Left,
+			nameLabel,
+			nameBox,
+			"\n",
+			baseURLLabel,
+			baseURLBox,
+			"\n",
+			lipgloss.NewStyle().Foreground(lipgloss.Color("#a6adc8")).Render("Every request created in this collection will prepend this Base URL."),
+		)
+
 	case ModalHelp:
 		title = "Keyboard Shortcuts Reference"
 		body = `
+  Alt+S        📂 Toggle Retractable Collections Sidebar
+  c            Create New Collection (when focused on Sidebar)
+  n            Create New Request under Collection (when focused on Sidebar)
   Alt+Space    🔭 Telescope Request Finder (List & Search Requests)
   Alt+M        Toggle HTTP Method (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS)
   Alt+K        🎨 Cycle UI Color Theme (Dark, Light, Cyberpunk, Nord, HighContrast)
@@ -285,7 +374,7 @@ func (m Modals) View(w, h int) string {
   Alt+I / Ctrl+I Import cURL / OpenAPI
   Ctrl+W       Close Tab
   Ctrl+Q       Quit App
-  Tab / Shift  Switch Panel Focus (Editor <-> Response)
+  Tab / Shift  Switch Panel Focus (Sidebar <-> Editor <-> Response)
   Ctrl+1 / 2   Focus Request Editor / Focus Response Viewer
   Alt+1..5     Switch Sub-Tabs (Params, Headers, Auth, Body, Cookies)
   ESC / Alt+U  Focus URL Bar (from sub-tab text area) / Close Modal

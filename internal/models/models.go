@@ -107,6 +107,7 @@ type CollectionNode struct {
 type Collection struct {
 	ID          string            `json:"id" yaml:"id"`
 	Name        string            `json:"name" yaml:"name"`
+	BaseURL     string            `json:"base_url,omitempty" yaml:"base_url,omitempty"`
 	Description string            `json:"description,omitempty" yaml:"description,omitempty"`
 	Nodes       []*CollectionNode `json:"nodes" yaml:"nodes"`
 	Variables   map[string]string `json:"variables,omitempty" yaml:"variables,omitempty"`

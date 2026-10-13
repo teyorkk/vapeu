@@ -240,13 +240,18 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			var reqToLoad *models.Request
 			var savedName string
-			m.modals, cmd, reqToLoad, savedName = m.modals.Update(msg)
+			var newCol *models.Collection
+			m.modals, cmd, reqToLoad, savedName, newCol = m.modals.Update(msg)
 
 			if reqToLoad != nil {
 				m.loadRequest(reqToLoad)
 			}
 			if savedName != "" {
 				m.saveCurrentRequest(savedName)
+			}
+			if newCol != nil {
+				m.collections = append(m.collections, *newCol)
+				_ = m.storage.SaveCollection(*newCol)
 			}
 			return m, cmd
 		}
