@@ -78,6 +78,8 @@ func (p *ResponsePanel) updateViewportContent() {
 		return
 	}
 
+	wrapStyle := lipgloss.NewStyle().Width(p.viewport.Width)
+
 	switch p.activeSubTab {
 	case RespTabBody:
 		bodyStr := string(p.Response.Body)
@@ -89,12 +91,12 @@ func (p *ResponsePanel) updateViewportContent() {
 		if p.isPretty && strings.Contains(strings.ToLower(p.Response.ContentType), "json") {
 			if pretty, err := theme.PrettyFormatJSON(p.Response.Body); err == nil {
 				highlighted := theme.HighlightSyntax(pretty, "json", p.styles.Theme.ChromaStyleName)
-				p.viewport.SetContent(highlighted)
+				p.viewport.SetContent(wrapStyle.Render(highlighted))
 				return
 			}
 		}
 
-		p.viewport.SetContent(bodyStr)
+		p.viewport.SetContent(wrapStyle.Render(bodyStr))
 
 	case RespTabHeaders:
 		var sb strings.Builder
@@ -102,7 +104,7 @@ func (p *ResponsePanel) updateViewportContent() {
 		for _, h := range p.Response.Headers {
 			sb.WriteString(p.styles.Key.Render(h.Key+": ") + p.styles.Value.Render(h.Value) + "\n")
 		}
-		p.viewport.SetContent(sb.String())
+		p.viewport.SetContent(wrapStyle.Render(sb.String()))
 
 	case RespTabCookies:
 		if len(p.Response.Cookies) == 0 {
@@ -113,7 +115,7 @@ func (p *ResponsePanel) updateViewportContent() {
 		for _, c := range p.Response.Cookies {
 			sb.WriteString(p.styles.Key.Render(c.Key+": ") + p.styles.Value.Render(c.Value) + "\n")
 		}
-		p.viewport.SetContent(sb.String())
+		p.viewport.SetContent(wrapStyle.Render(sb.String()))
 	}
 }
 
