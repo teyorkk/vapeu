@@ -267,7 +267,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "alt+s":
 			m.showSidebar = !m.showSidebar
-			if !m.showSidebar && m.activeFocus == FocusSidebar {
+			if m.showSidebar {
+				m.activeFocus = FocusSidebar
+			} else {
 				m.activeFocus = FocusEditor
 			}
 			m.recalculateLayout()
@@ -385,7 +387,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		var reqToLoad *models.Request
 		var triggerNewCol, triggerNewReq bool
-		m.sidebarPanel, cmd, reqToLoad, triggerNewCol, triggerNewReq = m.sidebarPanel.Update(msg)
+		var reqToDelete *SidebarItem
+		m.sidebarPanel, cmd, reqToLoad, triggerNewCol, triggerNewReq, reqToDelete = m.sidebarPanel.Update(msg)
 		cmds = append(cmds, cmd)
 
 		if reqToLoad != nil {
@@ -397,6 +400,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if triggerNewReq {
 			m.createRequestUnderCurrentCollection()
+		}
+		if reqToDelete != nil {
+			m.deleteRequest(reqToDelete)
 		}
 
 	case FocusEditor:
@@ -509,6 +515,60 @@ func (m *AppModel) createRequestUnderCurrentCollection() {
 	m.updateFocus()
 }
 
+func (m *AppModel) deleteRequest(item *SidebarItem) {
+	if item == nil || item.Request == nil {
+		return
+	}
+
+	var targetCol *models.Collection
+	for i := range m.collections {
+		if m.collections[i].ID == item.CollectionID {
+			targetCol = &m.collections[i]
+			break
+		}
+	}
+	if targetCol == nil && item.CollectionIdx >= 0 && item.CollectionIdx < len(m.collections) {
+		targetCol = &m.collections[item.CollectionIdx]
+	}
+
+	if targetCol == nil {
+		return
+	}
+
+	deletedID := item.Request.ID
+	newNodes := make([]*models.CollectionNode, 0, len(targetCol.Nodes))
+	for _, node := range targetCol.Nodes {
+		if node.Request != nil && node.Request.ID == deletedID {
+			continue
+		}
+		newNodes = append(newNodes, node)
+	}
+	targetCol.Nodes = newNodes
+	_ = m.storage.SaveCollection(*targetCol)
+	m.sidebarPanel.SetCollections(m.collections)
+
+	// Synchronize open tabs
+	var remainingTabs []tabItem
+	for _, tab := range m.tabs {
+		if tab.Request == nil || tab.Request.ID != deletedID {
+			remainingTabs = append(remainingTabs, tab)
+		}
+	}
+	if len(remainingTabs) == 0 {
+		newReq := demoRequest()
+		remainingTabs = []tabItem{{Title: newReq.Name, Request: newReq}}
+	}
+	m.tabs = remainingTabs
+	if m.activeTab >= len(m.tabs) {
+		m.activeTab = len(m.tabs) - 1
+	}
+
+	// If editor was displaying the deleted request, switch to active tab request
+	if m.editorPanel.Request != nil && m.editorPanel.Request.ID == deletedID {
+		m.editorPanel.LoadRequest(m.tabs[m.activeTab].Request)
+	}
+}
+
 func (m *AppModel) cycleTheme() {
 	curr := strings.ToLower(m.config.Theme)
 	idx := 0
@@ -550,12 +610,8 @@ func (m *AppModel) recalculateLayout() {
 		return
 	}
 
-	// 1 line header
-	availHeight := m.height - 1
-	if availHeight < 10 {
-		availHeight = 10
-	}
-
+	// 1 line header + 1 line safety bottom margin to guarantee bottom border fits without terminal scroll
+	availHeight := max(10, m.height-2)
 	topHeight := (availHeight * 50) / 100
 	bottomHeight := availHeight - topHeight
 
@@ -565,10 +621,7 @@ func (m *AppModel) recalculateLayout() {
 		if m.width < 70 {
 			sidebarW = 20
 		}
-		mainWidth = m.width - sidebarW
-		if mainWidth < 20 {
-			mainWidth = 20
-		}
+		mainWidth = max(20, m.width-sidebarW)
 		m.sidebarPanel.SetSize(sidebarW, availHeight)
 	}
 
@@ -627,10 +680,11 @@ func (m AppModel) View() string {
 
 	mainLayout := lipgloss.JoinVertical(lipgloss.Left, headerView, bodyView)
 
-	// Ensure total layout height NEVER overflows terminal height
+	// Ensure total layout height NEVER overflows terminal height (with safety bottom margin)
+	maxLines := max(1, m.height-1)
 	lines := strings.Split(mainLayout, "\n")
-	if len(lines) > m.height {
-		mainLayout = strings.Join(lines[:m.height], "\n")
+	if len(lines) > maxLines {
+		mainLayout = strings.Join(lines[:maxLines], "\n")
 	}
 
 	// Overlay Modals if active

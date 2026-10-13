@@ -33,7 +33,7 @@ func TestAppModelInitialization(t *testing.T) {
 	viewOutput := app.View()
 	assert.NotEmpty(t, viewOutput)
 	lines := strings.Split(viewOutput, "\n")
-	assert.Equal(t, app.height, len(lines), "total view lines must equal terminal height")
+	assert.Equal(t, app.height-1, len(lines), "total view lines must equal app.height - 1 to preserve safe bottom border margin")
 	assert.Contains(t, lines[0], "VAPEU", "line 0 must contain VAPEU branding header")
 	assert.Contains(t, lines[0], "Help", "line 0 must contain Help hint")
 	t.Logf("Line 0: %q", lines[0])
@@ -57,15 +57,17 @@ func TestSidebarToggleAndCollectionBaseURL(t *testing.T) {
 	// Initially sidebar is open
 	assert.True(t, app.showSidebar)
 
-	// Press Alt+S to retract sidebar
+	// Press Alt+S to retract sidebar -> focus must switch directly to FocusEditor (request panel)
 	model, _ := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}, Alt: true})
 	app = model.(AppModel)
 	assert.False(t, app.showSidebar)
+	assert.Equal(t, FocusEditor, app.activeFocus, "closing sidebar must focus request panel")
 
-	// Press Alt+S to reopen sidebar
+	// Press Alt+S to reopen sidebar -> focus must switch to FocusSidebar (collections)
 	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}, Alt: true})
 	app = model.(AppModel)
 	assert.True(t, app.showSidebar)
+	assert.Equal(t, FocusSidebar, app.activeFocus, "opening sidebar must focus collections sidebar")
 
 	// Create collection with BaseURL
 	newCol := &models.Collection{
@@ -87,4 +89,124 @@ func TestSidebarToggleAndCollectionBaseURL(t *testing.T) {
 	assert.True(t, len(currentReq.URL) >= len(newCol.BaseURL))
 	assert.Contains(t, currentReq.URL, "https://api.example.com/v1/")
 }
+
+func TestDeleteRequestInApp(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "apicli-ui-delete-test-*")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	st, err := storage.NewStorage(filepath.Join(tempDir, ".apiclient"))
+	assert.NoError(t, err)
+
+	app := NewAppModel(st)
+	app.showSplash = false
+	app.width = 120
+	app.height = 40
+	app.recalculateLayout()
+
+	// Initial collection has 1 node
+	assert.NotEmpty(t, app.collections)
+	initialNodeCount := len(app.collections[0].Nodes)
+	assert.True(t, initialNodeCount > 0)
+
+	// Set focus to sidebar and select the request (index 1)
+	app.activeFocus = FocusSidebar
+	app.updateFocus()
+	app.sidebarPanel.selectedIdx = 1 // request item
+	assert.Equal(t, SidebarItemRequest, app.sidebarPanel.SelectedItem().Type)
+	targetReqID := app.sidebarPanel.SelectedItem().Request.ID
+
+	// Press 'd' to delete request
+	model, _ := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	app = model.(AppModel)
+
+	// Verify request was removed from collection
+	assert.Len(t, app.collections[0].Nodes, initialNodeCount-1)
+
+	// Verify storage was updated
+	loadedCols, err := st.LoadCollections()
+	assert.NoError(t, err)
+	assert.Len(t, loadedCols[0].Nodes, initialNodeCount-1)
+
+	// Verify target request ID is gone
+	for _, node := range loadedCols[0].Nodes {
+		if node.Request != nil {
+			assert.NotEqual(t, targetReqID, node.Request.ID)
+		}
+	}
+}
+
+func TestTerminalHeightMatrix(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "apicli-ui-height-test-*")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	st, err := storage.NewStorage(filepath.Join(tempDir, ".apiclient"))
+	assert.NoError(t, err)
+
+	testHeights := []int{15, 20, 24, 30, 40, 50, 60}
+	for _, h := range testHeights {
+		app := NewAppModel(st)
+		app.showSplash = false
+		app.width = 120
+		app.height = h
+		app.recalculateLayout()
+
+		view := app.View()
+		assert.NotEmpty(t, view)
+		lines := strings.Split(view, "\n")
+		assert.True(t, len(lines) <= h-1, "rendered line count must never exceed h - 1 for terminal height %d (got %d)", h, len(lines))
+		assert.Contains(t, lines[0], "VAPEU", "line 0 must contain branding at height %d", h)
+	}
+}
+
+func TestDeleteRequestActiveTabSync(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "apicli-ui-tabsync-test-*")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	st, err := storage.NewStorage(filepath.Join(tempDir, ".apiclient"))
+	assert.NoError(t, err)
+
+	app := NewAppModel(st)
+	app.showSplash = false
+	app.width = 120
+	app.height = 40
+	app.recalculateLayout()
+
+	req1 := &models.Request{ID: "req-1", Name: "Req 1", Method: "GET", URL: "http://example.com/1"}
+	req2 := &models.Request{ID: "req-2", Name: "Req 2", Method: "POST", URL: "http://example.com/2"}
+
+	col := models.Collection{
+		ID:   "col-1",
+		Name: "Col 1",
+		Nodes: []*models.CollectionNode{
+			{ID: "node-1", Name: "Req 1", Kind: models.NodeRequest, Request: req1},
+			{ID: "node-2", Name: "Req 2", Kind: models.NodeRequest, Request: req2},
+		},
+	}
+	app.collections = []models.Collection{col}
+	app.sidebarPanel.SetCollections(app.collections)
+
+	// Set up 2 tabs: Tab 0 (Req 1), Tab 1 (Req 2)
+	app.tabs = []tabItem{
+		{Title: req1.Name, Request: req1},
+		{Title: req2.Name, Request: req2},
+	}
+	app.activeTab = 0
+	app.editorPanel.LoadRequest(req1)
+
+	// In sidebar, select req-1 (index 1) and delete it
+	app.activeFocus = FocusSidebar
+	app.updateFocus()
+	app.sidebarPanel.selectedIdx = 1
+	model, _ := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	app = model.(AppModel)
+
+	// Verify Tab 0 (Req 1) was removed, now only Tab (Req 2) remains
+	assert.Len(t, app.tabs, 1)
+	assert.Equal(t, "Req 2", app.tabs[0].Title)
+	assert.Equal(t, req2.ID, app.editorPanel.Request.ID)
+}
+
 

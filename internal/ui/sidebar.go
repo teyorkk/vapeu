@@ -28,20 +28,22 @@ type SidebarItem struct {
 }
 
 type SidebarPanel struct {
-	styles       theme.Styles
-	width        int
-	height       int
-	focused      bool
-	collections  []models.Collection
-	items        []SidebarItem
-	selectedIdx  int
+	styles        theme.Styles
+	width         int
+	height        int
+	focused       bool
+	collections   []models.Collection
+	items         []SidebarItem
+	selectedIdx   int
+	collapsedCols map[string]bool
 }
 
 func NewSidebarPanel(styles theme.Styles, collections []models.Collection) SidebarPanel {
 	sb := SidebarPanel{
-		styles:      styles,
-		collections: collections,
-		width:       28,
+		styles:        styles,
+		collections:   collections,
+		width:         28,
+		collapsedCols: make(map[string]bool),
 	}
 	sb.rebuildItems()
 	return sb
@@ -72,6 +74,10 @@ func (s *SidebarPanel) rebuildItems() {
 			BaseURL:        col.BaseURL,
 		})
 
+		if s.collapsedCols != nil && s.collapsedCols[col.ID] {
+			continue
+		}
+
 		for nIdx, node := range col.Nodes {
 			if node.Request != nil {
 				items = append(items, SidebarItem{
@@ -101,49 +107,59 @@ func (s *SidebarPanel) SelectedItem() *SidebarItem {
 	return nil
 }
 
-func (s SidebarPanel) Update(msg tea.Msg) (SidebarPanel, tea.Cmd, *models.Request, bool, bool) {
-	// Returns (panel, cmd, reqToLoad, triggerNewCollection, triggerNewReqInCol)
-	var reqToLoad *models.Request
-	triggerNewCol := false
-	triggerNewReq := false
+func (s SidebarPanel) Update(msg tea.Msg) (SidebarPanel, tea.Cmd, *models.Request, bool, bool, *SidebarItem) {
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok || !s.focused {
+		return s, nil, nil, false, false, nil
+	}
 
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		if !s.focused {
-			return s, nil, nil, false, false
+	var (
+		cmd           tea.Cmd
+		reqToLoad     *models.Request
+		triggerNewCol bool
+		triggerNewReq bool
+		reqToDelete   *SidebarItem
+	)
+
+	switch keyMsg.String() {
+	case "up", "k":
+		if s.selectedIdx > 0 {
+			s.selectedIdx--
 		}
 
-		switch msg.String() {
-		case "up", "k":
-			if s.selectedIdx > 0 {
-				s.selectedIdx--
-			}
-			return s, nil, nil, false, false
+	case "down", "j":
+		if s.selectedIdx < len(s.items)-1 {
+			s.selectedIdx++
+		}
 
-		case "down", "j":
-			if s.selectedIdx < len(s.items)-1 {
-				s.selectedIdx++
-			}
-			return s, nil, nil, false, false
-
-		case "enter":
-			item := s.SelectedItem()
-			if item != nil && item.Type == SidebarItemRequest && item.Request != nil {
+	case "enter", " ":
+		item := s.SelectedItem()
+		if item != nil {
+			if item.Type == SidebarItemCollection {
+				if s.collapsedCols == nil {
+					s.collapsedCols = make(map[string]bool)
+				}
+				s.collapsedCols[item.CollectionID] = !s.collapsedCols[item.CollectionID]
+				s.rebuildItems()
+			} else if item.Type == SidebarItemRequest {
 				reqToLoad = item.Request
 			}
-			return s, nil, reqToLoad, false, false
+		}
 
-		case "c":
-			triggerNewCol = true
-			return s, nil, nil, triggerNewCol, false
+	case "c":
+		triggerNewCol = true
 
-		case "n":
-			triggerNewReq = true
-			return s, nil, nil, false, triggerNewReq
+	case "n":
+		triggerNewReq = true
+
+	case "d", "x", "delete":
+		item := s.SelectedItem()
+		if item != nil && item.Type == SidebarItemRequest {
+			reqToDelete = item
 		}
 	}
 
-	return s, nil, nil, false, false
+	return s, cmd, reqToLoad, triggerNewCol, triggerNewReq, reqToDelete
 }
 
 func (s SidebarPanel) View() string {
@@ -154,7 +170,7 @@ func (s SidebarPanel) View() string {
 
 	titleText := " 📂 Collections "
 	header := lipgloss.NewStyle().Bold(true).Foreground(s.styles.Theme.TabActive).Render(titleText)
-	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("#6c7086")).Render(" [c]New [n]+Req")
+	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("#6c7086")).Render(" [c]New [n]+Req [d]Del [␣]Fold")
 
 	topLine := lipgloss.JoinHorizontal(lipgloss.Left, header, hint)
 
@@ -191,12 +207,17 @@ func (s SidebarPanel) View() string {
 					colTitle = "Unnamed"
 				}
 				// Truncate if too long for sidebar width
-				maxColLen := s.width - 8
+				maxColLen := s.width - 10
 				if maxColLen > 3 && len(colTitle) > maxColLen {
 					colTitle = colTitle[:maxColLen-2] + ".."
 				}
 
-				line := fmt.Sprintf("%s📁 %s", cursor, colTitle)
+				icon := "▼"
+				if s.collapsedCols != nil && s.collapsedCols[item.CollectionID] {
+					icon = "▶"
+				}
+
+				line := fmt.Sprintf("%s%s 📁 %s", cursor, icon, colTitle)
 				if i == s.selectedIdx {
 					sb.WriteString(s.styles.TabActive.Bold(true).Render(line) + "\n")
 				} else {
