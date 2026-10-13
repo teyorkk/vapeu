@@ -19,7 +19,8 @@ import (
 type PanelFocus int
 
 const (
-	FocusEditor PanelFocus = iota
+	FocusSidebar PanelFocus = iota
+	FocusEditor
 	FocusResponse
 )
 
@@ -41,12 +42,14 @@ type AppModel struct {
 	activeEnv    *models.Environment
 
 	showSplash        bool
+	showSidebar       bool
 	activeFocus       PanelFocus
 	width             int
 	height            int
 	requestCancelFunc context.CancelFunc
 
 	// Panels
+	sidebarPanel  SidebarPanel
 	editorPanel   EditorPanel
 	responsePanel ResponsePanel
 	modals        Modals
@@ -121,6 +124,7 @@ func NewAppModel(st *storage.Storage) AppModel {
 		firstReq = cols[0].Nodes[0].Request
 	}
 
+	sidebarPanel := NewSidebarPanel(styles, cols)
 	editorPanel := NewEditorPanel(firstReq, styles)
 	respPanel := NewResponsePanel(styles)
 	modals := NewModals(styles)
@@ -138,7 +142,9 @@ func NewAppModel(st *storage.Storage) AppModel {
 		environments:  envs,
 		history:       hist,
 		showSplash:    true,
+		showSidebar:   true,
 		activeFocus:   FocusEditor,
+		sidebarPanel:  sidebarPanel,
 		editorPanel:   editorPanel,
 		responsePanel: respPanel,
 		modals:        modals,
@@ -168,6 +174,7 @@ func (m AppModel) Init() tea.Cmd {
 }
 
 func (m *AppModel) updateFocus() {
+	m.sidebarPanel.SetFocused(m.activeFocus == FocusSidebar && m.modals.ActiveModal == ModalNone && !m.showSplash)
 	m.editorPanel.SetFocused(m.activeFocus == FocusEditor && m.modals.ActiveModal == ModalNone && !m.showSplash)
 	m.responsePanel.SetFocused(m.activeFocus == FocusResponse && m.modals.ActiveModal == ModalNone && !m.showSplash)
 }
@@ -252,11 +259,20 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if newCol != nil {
 				m.collections = append(m.collections, *newCol)
 				_ = m.storage.SaveCollection(*newCol)
+				m.sidebarPanel.SetCollections(m.collections)
 			}
 			return m, cmd
 		}
 
 		switch msg.String() {
+		case "alt+s":
+			m.showSidebar = !m.showSidebar
+			if !m.showSidebar && m.activeFocus == FocusSidebar {
+				m.activeFocus = FocusEditor
+			}
+			m.recalculateLayout()
+			m.updateFocus()
+			return m, nil
 		case "alt+k":
 			m.cycleTheme()
 			return m, nil
@@ -274,18 +290,36 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateFocus()
 			return m, nil
 		case "tab", "shift+tab":
-			if m.activeFocus == FocusEditor {
-				m.activeFocus = FocusResponse
+			if m.showSidebar {
+				if m.activeFocus == FocusSidebar {
+					m.activeFocus = FocusEditor
+				} else if m.activeFocus == FocusEditor {
+					m.activeFocus = FocusResponse
+				} else {
+					m.activeFocus = FocusSidebar
+				}
+			} else {
+				if m.activeFocus == FocusEditor {
+					m.activeFocus = FocusResponse
+				} else {
+					m.activeFocus = FocusEditor
+				}
+			}
+			m.updateFocus()
+			return m, nil
+		case "ctrl+1":
+			if m.showSidebar {
+				m.activeFocus = FocusSidebar
 			} else {
 				m.activeFocus = FocusEditor
 			}
 			m.updateFocus()
 			return m, nil
-		case "ctrl+1":
+		case "ctrl+2":
 			m.activeFocus = FocusEditor
 			m.updateFocus()
 			return m, nil
-		case "ctrl+2":
+		case "ctrl+3":
 			m.activeFocus = FocusResponse
 			m.updateFocus()
 			return m, nil
@@ -347,6 +381,24 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Route update to focused panel
 	switch m.activeFocus {
+	case FocusSidebar:
+		var cmd tea.Cmd
+		var reqToLoad *models.Request
+		var triggerNewCol, triggerNewReq bool
+		m.sidebarPanel, cmd, reqToLoad, triggerNewCol, triggerNewReq = m.sidebarPanel.Update(msg)
+		cmds = append(cmds, cmd)
+
+		if reqToLoad != nil {
+			m.loadRequest(reqToLoad)
+		}
+		if triggerNewCol {
+			m.modals.ShowCreateCollection()
+			m.updateFocus()
+		}
+		if triggerNewReq {
+			m.createRequestUnderCurrentCollection()
+		}
+
 	case FocusEditor:
 		var cmd tea.Cmd
 		m.editorPanel, cmd = m.editorPanel.Update(msg)
@@ -408,7 +460,53 @@ func (m *AppModel) saveCurrentRequest(name string) {
 			})
 		}
 		_ = m.storage.SaveCollection(*col)
+		m.sidebarPanel.SetCollections(m.collections)
 	}
+}
+
+func (m *AppModel) createRequestUnderCurrentCollection() {
+	if len(m.collections) == 0 {
+		return
+	}
+
+	targetColIdx := 0
+	item := m.sidebarPanel.SelectedItem()
+	if item != nil && item.CollectionIdx >= 0 && item.CollectionIdx < len(m.collections) {
+		targetColIdx = item.CollectionIdx
+	}
+
+	col := &m.collections[targetColIdx]
+
+	newURL := col.BaseURL
+	if newURL != "" && !strings.HasSuffix(newURL, "/") {
+		newURL += "/"
+	}
+
+	newReq := &models.Request{
+		ID:     uuid.New().String(),
+		Name:   fmt.Sprintf("New Request %d", len(col.Nodes)+1),
+		Method: "GET",
+		URL:    newURL,
+		Auth:   models.AuthConfig{Type: models.AuthNone},
+		Body:   models.RequestBody{Type: models.BodyNone},
+	}
+
+	col.Nodes = append(col.Nodes, &models.CollectionNode{
+		ID:      uuid.New().String(),
+		Name:    newReq.Name,
+		Kind:    models.NodeRequest,
+		Request: newReq,
+	})
+
+	_ = m.storage.SaveCollection(*col)
+	m.sidebarPanel.SetCollections(m.collections)
+
+	// Also load into editor
+	m.tabs = append(m.tabs, tabItem{Title: newReq.Name, Request: newReq})
+	m.activeTab = len(m.tabs) - 1
+	m.editorPanel.LoadRequest(newReq)
+	m.activeFocus = FocusEditor
+	m.updateFocus()
 }
 
 func (m *AppModel) cycleTheme() {
@@ -426,6 +524,7 @@ func (m *AppModel) cycleTheme() {
 
 	th := theme.GetTheme(nextTheme)
 	m.styles = theme.MakeStyles(th)
+	m.sidebarPanel.styles = m.styles
 	m.editorPanel.styles = m.styles
 	m.responsePanel.styles = m.styles
 	m.modals.styles = m.styles
@@ -460,8 +559,21 @@ func (m *AppModel) recalculateLayout() {
 	topHeight := (availHeight * 50) / 100
 	bottomHeight := availHeight - topHeight
 
-	m.editorPanel.SetSize(m.width, topHeight)
-	m.responsePanel.SetSize(m.width, bottomHeight)
+	mainWidth := m.width
+	if m.showSidebar {
+		sidebarW := 28
+		if m.width < 70 {
+			sidebarW = 20
+		}
+		mainWidth = m.width - sidebarW
+		if mainWidth < 20 {
+			mainWidth = 20
+		}
+		m.sidebarPanel.SetSize(sidebarW, availHeight)
+	}
+
+	m.editorPanel.SetSize(mainWidth, topHeight)
+	m.responsePanel.SetSize(mainWidth, bottomHeight)
 }
 
 func (m AppModel) View() string {
@@ -495,15 +607,25 @@ func (m AppModel) View() string {
 
 	tabBar := strings.Join(tabTitles, " | ")
 	newTabBtn := lipgloss.NewStyle().Foreground(lipgloss.Color("#a6e3a1")).Render(" [+ Ctrl+T] ")
+	sidebarHint := lipgloss.NewStyle().Foreground(lipgloss.Color("#f9e2af")).Render(" [Alt+S Sidebar] ")
 	telescopeHint := lipgloss.NewStyle().Foreground(lipgloss.Color("#89b4fa")).Render(" [Alt+Space Telescope] ")
 
-	headerView := m.styles.HeaderFg.Render(brandBadge + " " + tabBar + newTabBtn + telescopeHint + " | Press '?' for Help ")
+	headerView := m.styles.HeaderFg.Render(brandBadge + " " + tabBar + newTabBtn + sidebarHint + telescopeHint + " | Press '?' for Help ")
 
-	// Render Full-Width Editor & Response Panels
+	// Render Editor & Response Panels
 	editorView := m.editorPanel.View()
 	responseView := m.responsePanel.View()
+	rightStack := lipgloss.JoinVertical(lipgloss.Left, editorView, responseView)
 
-	mainLayout := lipgloss.JoinVertical(lipgloss.Left, headerView, editorView, responseView)
+	var bodyView string
+	if m.showSidebar {
+		sidebarView := m.sidebarPanel.View()
+		bodyView = lipgloss.JoinHorizontal(lipgloss.Top, sidebarView, rightStack)
+	} else {
+		bodyView = rightStack
+	}
+
+	mainLayout := lipgloss.JoinVertical(lipgloss.Left, headerView, bodyView)
 
 	// Overlay Modals if active
 	if m.modals.ActiveModal != ModalNone {

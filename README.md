@@ -93,12 +93,15 @@ go build -o apicli ./cmd/apicli
 ### General & Workspace
 | Key Binding | Action |
 | --- | --- |
+| `Alt+S` | Toggle Retractable Collections Sidebar |
+| `c` | Create New Collection with Name and Base URL (when focused on Sidebar) |
+| `n` | Create New Request under Collection with Base URL (when focused on Sidebar) |
 | `Alt+Space` / `Ctrl+F` | Open Telescope Request Finder |
 | `Alt+Left` / `Alt+Right` (`Alt+[` / `Alt+]`) | Switch Open Request Tabs |
 | `Ctrl+N` / `Ctrl+T` | Create New Request Tab |
 | `Ctrl+W` | Close Active Request Tab |
-| `Tab` / `Shift+Tab` | Toggle Focus between Request Editor and Response Viewer |
-| `Ctrl+1` / `Ctrl+2` | Direct Focus (1: Request Editor, 2: Response Viewer) |
+| `Tab` / `Shift+Tab` | Cycle Focus (Sidebar <-> Request Editor <-> Response Viewer) |
+| `Ctrl+1` / `Ctrl+2` / `Ctrl+3` | Direct Focus (1: Sidebar, 2: Request Editor, 3: Response Viewer) |
 | `Alt+K` | Cycle UI Color Theme (Dark, Light, Cyberpunk, Nord, High Contrast) |
 | `?` | Display Help & Keyboard Reference Modal |
 | `Ctrl+Q` | Exit Application |
