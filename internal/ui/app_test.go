@@ -3,6 +3,7 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"vapeu/internal/models"
@@ -20,6 +21,7 @@ func TestAppModelInitialization(t *testing.T) {
 	assert.NoError(t, err)
 
 	app := NewAppModel(st)
+	app.showSplash = false
 	assert.NotNil(t, app.storage)
 	assert.Len(t, app.tabs, 1)
 
@@ -30,6 +32,12 @@ func TestAppModelInitialization(t *testing.T) {
 
 	viewOutput := app.View()
 	assert.NotEmpty(t, viewOutput)
+	lines := strings.Split(viewOutput, "\n")
+	assert.Equal(t, app.height, len(lines), "total view lines must equal terminal height")
+	assert.Contains(t, lines[0], "VAPEU", "line 0 must contain VAPEU branding header")
+	assert.Contains(t, lines[0], "Help", "line 0 must contain Help hint")
+	t.Logf("Line 0: %q", lines[0])
+	t.Logf("Total lines: %d", len(lines))
 }
 
 func TestSidebarToggleAndCollectionBaseURL(t *testing.T) {

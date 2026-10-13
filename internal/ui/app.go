@@ -627,6 +627,12 @@ func (m AppModel) View() string {
 
 	mainLayout := lipgloss.JoinVertical(lipgloss.Left, headerView, bodyView)
 
+	// Ensure total layout height NEVER overflows terminal height
+	lines := strings.Split(mainLayout, "\n")
+	if len(lines) > m.height {
+		mainLayout = strings.Join(lines[:m.height], "\n")
+	}
+
 	// Overlay Modals if active
 	if m.modals.ActiveModal != ModalNone {
 		return m.modals.View(m.width, m.height)

@@ -430,6 +430,14 @@ func (p EditorPanel) View() string {
 
 	content := lipgloss.JoinVertical(lipgloss.Left, topBar, "\n", tabBar, "\n", tabContent)
 
+	maxInnerLines := p.height - 2
+	if maxInnerLines > 0 {
+		lines := strings.Split(content, "\n")
+		if len(lines) > maxInnerLines {
+			content = strings.Join(lines[:maxInnerLines], "\n")
+		}
+	}
+
 	return style.
 		Width(p.width - 2).
 		Height(p.height - 2).
